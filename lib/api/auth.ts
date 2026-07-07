@@ -140,6 +140,21 @@ export async function signInWithOAuth(provider: SnsProvider): Promise<User> {
   return profile;
 }
 
+/** 내 동네(위치) 저장 — 위치기반 알림 대상 계산에 사용 */
+export async function updateUserLocation(
+  userId: string,
+  lat: number,
+  lng: number
+): Promise<void> {
+  if (USE_MOCK) return;
+
+  const { error } = await supabase
+    .from("users")
+    .update({ home_lat: lat, home_lng: lng })
+    .eq("uid", userId);
+  if (error) throw new Error(error.message);
+}
+
 /** 로그아웃 */
 export async function signOut(): Promise<void> {
   if (USE_MOCK) return;

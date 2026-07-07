@@ -10,8 +10,14 @@ create table if not exists public.users (
   uid        uuid        primary key references auth.users(id) on delete cascade,
   email      text        not null,
   nickname   text        not null,
+  home_lat   double precision, -- 내 동네 위도 (위치기반 알림용)
+  home_lng   double precision, -- 내 동네 경도
   created_at timestamptz not null default now()
 );
+
+-- 이미 만들어진 users 테이블에도 컬럼 추가
+alter table public.users add column if not exists home_lat double precision;
+alter table public.users add column if not exists home_lng double precision;
 
 create table if not exists public.gyms (
   id         uuid        primary key default gen_random_uuid(),
@@ -55,6 +61,13 @@ begin
   end if;
 end $$;
 
+-- 푸시 토큰 (원격 푸시 발송 대상). 한 유저가 여러 기기 토큰을 가질 수 있음.
+create table if not exists public.push_tokens (
+  token      text        primary key,
+  user_id    uuid        not null references public.users(uid) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
 -- ----------------------------------------------------------------
 -- 2) RLS 활성화
 -- ----------------------------------------------------------------
@@ -62,6 +75,7 @@ alter table public.users       enable row level security;
 alter table public.gyms        enable row level security;
 alter table public.gym_prices  enable row level security;
 alter table public.gym_details enable row level security;
+alter table public.push_tokens enable row level security;
 
 -- ----------------------------------------------------------------
 -- 3) 정책
@@ -92,6 +106,16 @@ create policy "gym_prices_delete_owner" on public.gym_prices for delete to authe
 create policy "gym_details_select_all"  on public.gym_details for select using (true);
 create policy "gym_details_insert_auth" on public.gym_details for insert to authenticated with check (true);
 
+-- push_tokens (본인 토큰만 관리, 조회도 본인 것만)
+create policy "push_tokens_select_self" on public.push_tokens for select to authenticated
+  using (auth.uid() = user_id);
+create policy "push_tokens_insert_self" on public.push_tokens for insert to authenticated
+  with check (auth.uid() = user_id);
+create policy "push_tokens_update_self" on public.push_tokens for update to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "push_tokens_delete_self" on public.push_tokens for delete to authenticated
+  using (auth.uid() = user_id);
+
 -- ----------------------------------------------------------------
 -- 4) 회원가입 시 public.users 프로필 자동 생성 트리거
 --    - auth.users에 새 유저가 생기면(이메일/SNS 공통) 프로필을 만든다.
@@ -120,3 +144,29 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ----------------------------------------------------------------
+-- 5) 새 가격 등록 시 푸시 알림 (Edge Function 연결)
+--    권장: Dashboard → Database → Webhooks 로 gym_prices INSERT 시
+--          Edge Function `on-new-price` 를 호출하도록 설정한다.
+--    (SQL로 직접 트리거하려면 pg_net 확장 + 아래 형태를 사용. URL/키는
+--     프로젝트별 값이라 주석으로만 남긴다.)
+--
+-- create extension if not exists pg_net;
+-- create or replace function public.notify_new_price()
+-- returns trigger language plpgsql security definer as $$
+-- begin
+--   perform net.http_post(
+--     url := 'https://<project-ref>.supabase.co/functions/v1/on-new-price',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'Authorization', 'Bearer <service-role-key>'
+--     ),
+--     body := jsonb_build_object('type', 'INSERT', 'record', to_jsonb(new))
+--   );
+--   return new;
+-- end; $$;
+-- drop trigger if exists on_gym_price_created on public.gym_prices;
+-- create trigger on_gym_price_created
+--   after insert on public.gym_prices
+--   for each row execute function public.notify_new_price();

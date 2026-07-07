@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "../components/ui/Button";
 import { colors } from "../constants/colors";
 import { fontSize, spacing } from "../constants/layout";
@@ -31,7 +32,7 @@ export default function OnboardingScreen() {
   const complete = useOnboardingStore((state) => state.complete);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.logo}>GymPrice</Text>
       <Text style={styles.tagline}>동네 헬스장 가격, 투명하게 비교하세요</Text>
 
@@ -48,7 +49,7 @@ export default function OnboardingScreen() {
       </View>
 
       <Button title="시작하기" onPress={() => complete()} />
-    </View>
+    </SafeAreaView>
   );
 }
 

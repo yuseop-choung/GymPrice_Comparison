@@ -21,7 +21,6 @@
           "locationWhenInUsePermission": "주변 헬스장을 찾기 위해 위치 권한이 필요합니다."
         }
       ],
-      "expo-status-bar",
       "expo-font",
       "expo-web-browser"
     ],

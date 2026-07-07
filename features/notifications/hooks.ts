@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import {
+  getExpoPushToken,
   requestNotificationPermission,
+  savePushToken,
   sendLocalNotification,
 } from "../../lib/api/notifications";
+import { useAuthStore } from "../../store/authStore";
 
 interface UseNotificationsResult {
   granted: boolean;
@@ -42,4 +45,30 @@ export function useNotifications(): UseNotificationsResult {
   }
 
   return { granted, sendTest };
+}
+
+/**
+ * 원격 푸시 등록 훅
+ * - 로그인 유저가 생기면 Expo 푸시 토큰을 발급받아 서버에 저장한다.
+ * - 토큰을 못 받으면(시뮬레이터/권한 거부/EAS 미설정) 조용히 건너뛴다.
+ */
+export function usePushRegistration(): void {
+  const user = useAuthStore((state) => state.user);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+
+    getExpoPushToken()
+      .then((token) => {
+        if (mounted && token) return savePushToken(user.uid, token);
+      })
+      .catch(() => {
+        // 등록 실패는 앱 사용에 영향 없도록 무시한다.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 }

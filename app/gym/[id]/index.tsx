@@ -1,7 +1,8 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../../components/ui/Button";
+import { StateView } from "../../../components/ui/StateView";
 import { colors } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
 import { GymActions } from "../../../features/gym/components/GymActions";
@@ -26,20 +27,9 @@ export default function GymDetailScreen() {
     }, [refetch])
   );
 
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
-
+  if (isLoading) return <StateView loading fill />;
   if (error || !data) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{error ?? "정보를 찾을 수 없습니다."}</Text>
-      </View>
-    );
+    return <StateView message={error ?? "정보를 찾을 수 없습니다."} fill />;
   }
 
   const { gym, prices, detail } = data;
@@ -111,12 +101,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-  },
   content: {
     padding: spacing.lg,
   },
@@ -162,9 +146,5 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: "center",
     marginTop: spacing.xl,
-  },
-  error: {
-    fontSize: fontSize.md,
-    color: colors.error,
   },
 });

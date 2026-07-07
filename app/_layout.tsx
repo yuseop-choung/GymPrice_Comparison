@@ -1,5 +1,7 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { usePushRegistration } from "../features/notifications/hooks";
 import { useAuthStore } from "../store/authStore";
 import { useOnboardingStore } from "../store/onboardingStore";
 
@@ -16,6 +18,8 @@ export default function RootLayout() {
   const loadOnboarding = useOnboardingStore((state) => state.load);
   const segments = useSegments();
   const router = useRouter();
+
+  usePushRegistration(); // 로그인 시 푸시 토큰 등록
 
   useEffect(() => {
     initialize();
@@ -43,8 +47,9 @@ export default function RootLayout() {
   }, [user, isInitialized, hasSeen, segments, router]);
 
   return (
-    <Stack>
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+    <SafeAreaProvider>
+      <Stack>
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="gym/[id]/index" options={{ title: "헬스장 상세" }} />
@@ -56,10 +61,11 @@ export default function RootLayout() {
         name="gym/[id]/price-edit"
         options={{ title: "가격 수정" }}
       />
-      <Stack.Screen
-        name="gym/[id]/detail-edit"
-        options={{ title: "부가정보 수정" }}
-      />
-    </Stack>
+        <Stack.Screen
+          name="gym/[id]/detail-edit"
+          options={{ title: "부가정보 수정" }}
+        />
+      </Stack>
+    </SafeAreaProvider>
   );
 }

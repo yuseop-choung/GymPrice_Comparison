@@ -1,14 +1,15 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Input } from "../../components/ui/Input";
+import { StateView } from "../../components/ui/StateView";
 import { colors } from "../../constants/colors";
 import { SEARCH_RADIUS_KM } from "../../constants/config";
 import { fontSize, radius, spacing } from "../../constants/layout";
@@ -25,7 +26,7 @@ export default function ListScreen() {
   const [keyword, setKeyword] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("distance");
   const { coords } = useLocation();
-  const { gyms, isLoading, error } = useNearbyGyms(
+  const { gyms, isLoading, error, refetch } = useNearbyGyms(
     coords.lat,
     coords.lng,
     SEARCH_RADIUS_KM
@@ -80,10 +81,10 @@ export default function ListScreen() {
         </View>
       </View>
 
-      {isLoading ? (
-        <ActivityIndicator color={colors.primary} style={styles.loading} />
+      {isLoading && gyms.length === 0 ? (
+        <StateView loading fill />
       ) : error ? (
-        <Text style={styles.message}>{error}</Text>
+        <StateView message={error} fill />
       ) : (
         <FlatList
           data={visibleGyms}
@@ -92,9 +93,10 @@ export default function ListScreen() {
             <GymCard gym={item} onPress={() => router.push(`/gym/${item.id}`)} />
           )}
           contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.message}>검색 결과가 없어요.</Text>
+          refreshControl={
+            <RefreshControl refreshing={isLoading} onRefresh={refetch} />
           }
+          ListEmptyComponent={<StateView message="검색 결과가 없어요." />}
         />
       )}
     </View>
@@ -137,14 +139,5 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
-  },
-  loading: {
-    marginTop: spacing.xl,
-  },
-  message: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.xl,
   },
 });

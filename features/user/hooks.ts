@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   signInWithEmail,
   signInWithOAuth,
   signUpWithEmail,
+  updateUserLocation,
 } from "../../lib/api/auth";
 import { useAuthStore } from "../../store/authStore";
 import type { User } from "../../types";
@@ -66,4 +67,24 @@ export function useAuth(): UseAuthResult {
     loginWithGoogle: () => run(() => signInWithOAuth("google")),
     loginWithNaver: () => run(() => signInWithOAuth("naver")),
   };
+}
+
+/**
+ * 내 동네(위치) 동기화 훅
+ * - 로그인 상태에서 좌표가 준비되면 한 번 서버에 저장한다(위치기반 알림용).
+ */
+export function useSyncUserLocation(coords: {
+  lat: number;
+  lng: number;
+}): void {
+  const user = useAuthStore((state) => state.user);
+  const syncedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user || syncedRef.current) return;
+    syncedRef.current = true;
+    updateUserLocation(user.uid, coords.lat, coords.lng).catch(() => {
+      // 위치 저장 실패는 앱 사용에 영향 없도록 무시한다.
+    });
+  }, [user, coords.lat, coords.lng]);
 }
