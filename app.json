@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "GymPrice",
+    "slug": "gymprice",
+    "scheme": "gymprice",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "주변 헬스장을 찾기 위해 위치 권한이 필요합니다."
+        }
+      ],
+      "expo-status-bar",
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
