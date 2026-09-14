@@ -40,7 +40,8 @@ export default function RegisterScreen() {
 
   const { submit, isLoading, error } = useRegisterGym({
     onSuccess: (created) => {
-      router.replace(`/gym/${created.id}`);
+      // 등록 직후 바로 가격을 입력할 수 있도록 가격 등록 화면으로 이동한다.
+      router.replace(`/gym/${created.id}/price-submit`);
     },
   });
 
