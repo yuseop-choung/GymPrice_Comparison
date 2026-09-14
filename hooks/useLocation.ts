@@ -15,7 +15,7 @@ interface UseLocationResult {
 
 /**
  * 현재 위치(GPS) 조회 훅
- * - 권한 거부/실패 시 DEFAULT_COORDS(서울 시청)로 폴백하고 error 메시지를 채운다.
+ * - 권한 거부/실패 시 DEFAULT_COORDS(봉은사역)로 폴백하고 error 메시지를 채운다.
  */
 export function useLocation(): UseLocationResult {
   const [coords, setCoords] = useState<Coords>({ ...DEFAULT_COORDS });

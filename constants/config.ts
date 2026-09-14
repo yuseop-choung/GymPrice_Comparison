@@ -6,10 +6,10 @@
 /** 내 주변 헬스장 검색 기본 반경 (km) */
 export const SEARCH_RADIUS_KM = 3;
 
-/** 위치 권한 거부/실패 시 사용할 폴백 좌표 (서울 시청) */
+/** 위치 권한 거부/실패 시 사용할 폴백 좌표 (봉은사역) */
 export const DEFAULT_COORDS = {
-  lat: 37.5665,
-  lng: 126.978,
+  lat: 37.5145,
+  lng: 127.0596,
 } as const;
 
 /**

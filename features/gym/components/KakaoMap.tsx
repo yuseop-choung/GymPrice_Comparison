@@ -4,12 +4,13 @@ import { colors } from "../../../constants/colors";
 import { KAKAO_JS_KEY } from "../../../constants/config";
 import { fontSize } from "../../../constants/layout";
 
-/** 지도에 찍을 마커 (헬스장 최소 정보) */
+/** 지도에 찍을 마커 (헬스장 최소 정보 + 표시 라벨) */
 interface MapMarker {
   id: string;
   name: string;
   lat: number;
   lng: number;
+  label: string; // 말풍선에 표시할 텍스트 (예: 최저가)
 }
 
 interface KakaoMapProps {
@@ -45,19 +46,37 @@ export function KakaoMap({ center, markers, onMarkerPress }: KakaoMapProps) {
   );
 }
 
-/** 카카오맵 SDK를 로드하고 마커를 렌더링하는 HTML 생성 */
+/** 카카오맵 SDK를 로드하고 가격 말풍선(CustomOverlay)을 렌더링하는 HTML 생성 */
 function buildHtml(
   center: { lat: number; lng: number },
   markers: MapMarker[]
 ): string {
   const data = JSON.stringify(
-    markers.map((m) => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng }))
+    markers.map((m) => ({
+      id: m.id,
+      name: m.name,
+      lat: m.lat,
+      lng: m.lng,
+      label: m.label,
+    }))
   );
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+  <style>
+    html,body,#map{margin:0;padding:0;width:100%;height:100%}
+    .pill{
+      background:${colors.white}; border:1px solid ${colors.primary}; border-radius:12px;
+      padding:4px 8px; text-align:center; transform:translateY(-6px);
+      box-shadow:0 1px 3px rgba(0,0,0,0.3);
+    }
+    .pill .name{
+      font-size:11px; font-weight:600; color:${colors.text};
+      max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .pill .price{ font-size:12px; font-weight:700; color:${colors.primary}; }
+  </style>
 </head>
 <body>
   <div id="map"></div>
@@ -70,14 +89,25 @@ function buildHtml(
       });
       var gyms = ${data};
       gyms.forEach(function (g) {
-        var marker = new kakao.maps.Marker({
-          map: map,
+        var wrap = document.createElement('div');
+        wrap.className = 'pill';
+        var nameEl = document.createElement('div');
+        nameEl.className = 'name';
+        nameEl.innerText = g.name;
+        var priceEl = document.createElement('div');
+        priceEl.className = 'price';
+        priceEl.innerText = g.label;
+        wrap.appendChild(nameEl);
+        wrap.appendChild(priceEl);
+        wrap.onclick = function () {
+          if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(g.id);
+        };
+        var overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(g.lat, g.lng),
-          title: g.name
+          content: wrap,
+          yAnchor: 1
         });
-        kakao.maps.event.addListener(marker, 'click', function () {
-          window.ReactNativeWebView.postMessage(g.id);
-        });
+        overlay.setMap(map);
       });
     });
   </script>
