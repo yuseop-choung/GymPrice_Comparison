@@ -7,7 +7,7 @@ import {
   submitPrice,
   updatePrice,
 } from "../gym/api";
-import { hasAnyPrice } from "./utils";
+import { validatePriceValues } from "./utils";
 
 /** 가격 등록 입력값 (id, created_at 은 서버에서 생성) */
 type PriceInput = Omit<GymPrice, "id" | "created_at">;
@@ -25,7 +25,8 @@ interface UseSubmitPriceResult {
 
 /**
  * 가격 등록 훅 (비즈니스 로직 전담)
- * - 유효성 검사: price 4종(1/3/6/12개월) 중 최소 1개는 입력되어야 한다.
+ * - 유효성 검사: price 4종(1/3/6/12개월) 중 최소 1개는 입력되어야 하며, 입력된 값은
+ *   합리적 범위(음수/0/비정상적으로 큰 값 차단) 안에 있어야 한다.
  * - submitPrice() 호출 및 로딩/에러 상태 관리.
  */
 export function useSubmitPrice({
@@ -35,9 +36,10 @@ export function useSubmitPrice({
   const [error, setError] = useState<string | null>(null);
 
   async function submit(input: PriceInput): Promise<void> {
-    // 유효성 검사: 가격 필드 중 최소 1개 입력
-    if (!hasAnyPrice(input)) {
-      setError("최소 1개 이상의 가격을 입력해주세요.");
+    // 유효성 검사: 최소 1개 입력 + 가격 범위(음수/0/비정상적 값 차단)
+    const validationError = validatePriceValues(input);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -143,8 +145,9 @@ export function useEditPrice(
   }, [priceId]);
 
   async function save(values: PriceValues): Promise<void> {
-    if (!hasAnyPrice(values)) {
-      setError("최소 1개 이상의 가격을 입력해주세요.");
+    const validationError = validatePriceValues(values);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     setIsBusy(true);

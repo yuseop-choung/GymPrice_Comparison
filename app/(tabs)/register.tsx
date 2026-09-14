@@ -1,31 +1,42 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ScrollView, StyleSheet, Text } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { colors } from "../../constants/colors";
+import { KAKAO_REST_KEY } from "../../constants/config";
 import { fontSize, spacing } from "../../constants/layout";
+import { GymSearchResults } from "../../features/gym/components/GymSearchResults";
 import { useRegisterGym } from "../../features/gym/hooks";
+import { useGymSearch } from "../../features/gym/useGymSearch";
 import { useLocation } from "../../hooks/useLocation";
+import type { KakaoPlace } from "../../lib/api/kakao";
 
-/** 헬스장 등록 화면 — UI 전담, 검증/전송은 useRegisterGym 훅에 위임 */
+/**
+ * 헬스장 등록 화면 — UI 전담, 검증/전송은 useRegisterGym 훅에 위임
+ * - 위경도는 사용자가 직접 입력하지 않는다: 검색으로 장소를 선택하면 그 좌표를,
+ *   선택하지 않고 이름/주소만 입력하면 현재 위치 좌표를 사용한다.
+ */
 export default function RegisterScreen() {
   const router = useRouter();
-  const { coords, isLoading: isLocating } = useLocation();
+  const { coords } = useLocation();
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
+  const [query, setQuery] = useState("");
+  const [selectedCoords, setSelectedCoords] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
 
-  // 위치 확인이 끝나면 현재 좌표를 기본값으로 채운다.
-  useEffect(() => {
-    if (!isLocating) {
-      setLat(String(coords.lat));
-      setLng(String(coords.lng));
-    }
-  }, [isLocating, coords.lat, coords.lng]);
+  const {
+    results,
+    isSearching,
+    error: searchError,
+    search,
+    reset: resetResults,
+  } = useGymSearch(coords);
 
   const { submit, isLoading, error } = useRegisterGym({
     onSuccess: (created) => {
@@ -33,12 +44,27 @@ export default function RegisterScreen() {
     },
   });
 
+  function handleQueryChange(text: string) {
+    setQuery(text);
+    setSelectedCoords(null); // 검색어를 바꾸면 이전 선택은 무효화
+  }
+
+  function handleSelect(place: KakaoPlace) {
+    setName(place.name);
+    setAddress(place.address);
+    setSelectedCoords({ lat: place.lat, lng: place.lng });
+    setQuery(place.name);
+    resetResults();
+  }
+
   function handleSubmit() {
+    // 검색으로 선택한 좌표가 있으면 그 값을, 없으면 현재 위치를 사용한다.
+    const location = selectedCoords ?? coords;
     submit({
       name: name.trim(),
       address: address.trim(),
-      lat: Number(lat),
-      lng: Number(lng),
+      lat: location.lat,
+      lng: location.lng,
       phone: phone.trim() === "" ? null : phone.trim(),
     });
   }
@@ -48,16 +74,35 @@ export default function RegisterScreen() {
       <Text style={styles.title}>헬스장 등록</Text>
 
       <Input
+        label="헬스장 검색"
+        value={query}
+        onChangeText={handleQueryChange}
+        onSubmitEditing={() => search(query)}
+        placeholder="이름 또는 주소로 검색"
+        returnKeyType="search"
+      />
+      <Button title="검색" onPress={() => search(query)} loading={isSearching} />
+      {!KAKAO_REST_KEY ? (
+        <Text style={styles.hint}>
+          검색 기능을 사용하려면 카카오 REST API 키(EXPO_PUBLIC_KAKAO_REST_KEY)가
+          필요합니다. 없으면 아래 항목을 직접 입력해주세요.
+        </Text>
+      ) : null}
+      {searchError ? <Text style={styles.error}>{searchError}</Text> : null}
+
+      <GymSearchResults results={results} onSelect={handleSelect} />
+
+      <Input
         label="헬스장 이름"
         value={name}
         onChangeText={setName}
-        placeholder="예: 강철짐 시청점"
+        placeholder="예: 강철짐 강남점"
       />
       <Input
         label="주소"
         value={address}
         onChangeText={setAddress}
-        placeholder="예: 서울 중구 무교로 21"
+        placeholder="검색 결과가 없으면 직접 입력해주세요"
       />
       <Input
         label="전화번호 (선택)"
@@ -65,20 +110,6 @@ export default function RegisterScreen() {
         onChangeText={setPhone}
         placeholder="예: 02-1234-5678"
         keyboardType="phone-pad"
-      />
-      <Input
-        label="위도"
-        value={lat}
-        onChangeText={setLat}
-        placeholder="현재 위치 기준"
-        keyboardType="numbers-and-punctuation"
-      />
-      <Input
-        label="경도"
-        value={lng}
-        onChangeText={setLng}
-        placeholder="현재 위치 기준"
-        keyboardType="numbers-and-punctuation"
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -101,6 +132,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.text,
     marginBottom: spacing.lg,
+  },
+  hint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   error: {
     fontSize: fontSize.sm,

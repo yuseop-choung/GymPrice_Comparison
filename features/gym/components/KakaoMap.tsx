@@ -46,11 +46,19 @@ export function KakaoMap({ center, markers, onMarkerPress }: KakaoMapProps) {
   );
 }
 
-/** 카카오맵 SDK를 로드하고 가격 말풍선(CustomOverlay)을 렌더링하는 HTML 생성 */
-function buildHtml(
+/**
+ * 카카오맵 SDK를 로드하고 가격 말풍선(CustomOverlay)을 렌더링하는 HTML 생성
+ * - 테스트(스크립트 태그 이스케이프 검증)를 위해 export 한다.
+ */
+export function buildHtml(
   center: { lat: number; lng: number },
   markers: MapMarker[]
 ): string {
+  // ⚠️ 헬스장 이름(name)은 사용자가 자유롭게 입력한 값이라, JSON을 <script> 태그에
+  // 그대로 넣으면 "</script" 시퀀스가 HTML 파서 단계에서 스크립트를 조기 종료시켜
+  // 임의 마크업/스크립트가 주입될 수 있다(JSON.stringify는 이 시퀀스를 이스케이프하지
+  // 않음). </script>, <!--, <script를 이스케이프해 스크립트 태그를 절대 조기 종료시키지
+  // 않도록 한다.
   const data = JSON.stringify(
     markers.map((m) => ({
       id: m.id,
@@ -59,7 +67,7 @@ function buildHtml(
       lng: m.lng,
       label: m.label,
     }))
-  );
+  ).replace(/<(\/?script|!--)/gi, "\\u003c$1");
   return `<!DOCTYPE html>
 <html>
 <head>
