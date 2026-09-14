@@ -7,6 +7,7 @@ import type {
   MyPriceItem,
   PriceValues,
 } from "../../types";
+import { latestByGroup } from "../price/utils";
 
 /**
  * 목(mock) 데이터 및 더미 API
@@ -102,7 +103,10 @@ function delay<T>(value: T, ms = 300): Promise<T> {
 
 export function getNearbyGymsMock(): Promise<GymWithPrice[]> {
   const result: GymWithPrice[] = MOCK_GYMS.map((gym) => {
-    const monthly = MOCK_PRICES.filter((p) => p.gym_id === gym.id)
+    const gymPrices = MOCK_PRICES.filter((p) => p.gym_id === gym.id);
+    // 같은 유저의 중복 제보는 최신 1건만 최저가 계산에 반영한다 (api.ts와 동일 로직).
+    const latestPrices = latestByGroup(gymPrices, (p) => p.user_id);
+    const monthly = latestPrices
       .map((p) => p.price_1m)
       .filter((value): value is number => value !== null);
     return {

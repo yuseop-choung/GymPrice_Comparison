@@ -2,11 +2,12 @@ import { render } from "@testing-library/react-native";
 import type { GymPrice } from "../../../types";
 import { PriceSummary } from "./PriceSummary";
 
-function makePrice(price_1m: number | null): GymPrice {
+/** userId를 지정하지 않으면 서로 다른 유저의 제보로 취급되도록 price_1m 기반 고유값을 쓴다. */
+function makePrice(price_1m: number | null, userId = `u-${price_1m}`): GymPrice {
   return {
     id: `p-${price_1m}`,
     gym_id: "g",
-    user_id: "u",
+    user_id: userId,
     price_1m,
     price_3m: null,
     price_6m: null,
@@ -18,6 +19,7 @@ function makePrice(price_1m: number | null): GymPrice {
 
 describe("PriceSummary", () => {
   it("최저가를 계산해 표시한다", async () => {
+    // 서로 다른 유저 2명이 각각 제보한 가격 중 최저가를 보여준다.
     const { getByText } = await render(
       <PriceSummary prices={[makePrice(60000), makePrice(50000)]} />
     );

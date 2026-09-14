@@ -71,20 +71,22 @@ export function useAuth(): UseAuthResult {
 
 /**
  * 내 동네(위치) 동기화 훅
- * - 로그인 상태에서 좌표가 준비되면 한 번 서버에 저장한다(위치기반 알림용).
+ * - 로그인 상태에서 "실제 GPS 좌표"가 확정되면 한 번 서버에 저장한다(위치기반 알림용).
+ * - isLocating이 true인 동안의 coords는 아직 폴백(DEFAULT_COORDS)일 수 있으므로,
+ *   GPS 조회가 끝날 때까지 동기화를 미룬다 (그렇지 않으면 폴백 좌표가 영구 저장됨).
  */
-export function useSyncUserLocation(coords: {
-  lat: number;
-  lng: number;
-}): void {
+export function useSyncUserLocation(
+  coords: { lat: number; lng: number },
+  isLocating: boolean
+): void {
   const user = useAuthStore((state) => state.user);
   const syncedRef = useRef(false);
 
   useEffect(() => {
-    if (!user || syncedRef.current) return;
+    if (!user || isLocating || syncedRef.current) return;
     syncedRef.current = true;
     updateUserLocation(user.uid, coords.lat, coords.lng).catch(() => {
       // 위치 저장 실패는 앱 사용에 영향 없도록 무시한다.
     });
-  }, [user, coords.lat, coords.lng]);
+  }, [user, isLocating, coords.lat, coords.lng]);
 }

@@ -39,6 +39,19 @@ describe("useSubmitPrice", () => {
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
+  it("가격이 음수/비정상 범위면 에러를 내고 API를 호출하지 않는다", async () => {
+    const onSuccess = jest.fn();
+    const { result } = await renderHook(() => useSubmitPrice({ onSuccess }));
+
+    await act(async () => {
+      await result.current.submit({ ...baseInput, price_1m: -5000 });
+    });
+
+    expect(result.current.error).not.toBeNull();
+    expect(submitPriceMock).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
   it("유효하면 submitPrice 호출 후 onSuccess를 부른다", async () => {
     const created = { id: "p1", created_at: "x" } as GymPrice;
     submitPriceMock.mockResolvedValue(created);

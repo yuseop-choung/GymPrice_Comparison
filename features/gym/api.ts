@@ -22,6 +22,7 @@ import {
   updatePriceMock,
 } from "./mock";
 import { distanceKm } from "./utils";
+import { latestByGroup } from "../price/utils";
 
 /**
  * 헬스장(gym) 도메인 API
@@ -63,13 +64,21 @@ export async function getNearbyGyms(
   const ids = inRadius.map((gym) => gym.id);
   const { data: prices, error: priceError } = await supabase
     .from("gym_prices")
-    .select("gym_id, price_1m")
+    .select("gym_id, user_id, price_1m, created_at")
     .in("gym_id", ids)
-    .returns<{ gym_id: string; price_1m: number | null }[]>();
+    .returns<
+      { gym_id: string; user_id: string; price_1m: number | null; created_at: string }[]
+    >();
   if (priceError) throw new Error(priceError.message);
 
+  // 같은 유저가 같은 헬스장에 중복 제보한 경우 최신 1건만 최저가 계산에 반영한다.
+  const latestPrices = latestByGroup(
+    prices ?? [],
+    (p) => `${p.gym_id}:${p.user_id}`
+  );
+
   const lowestByGym = new Map<string, number>();
-  for (const { gym_id, price_1m } of prices ?? []) {
+  for (const { gym_id, price_1m } of latestPrices) {
     if (price_1m === null) continue;
     const current = lowestByGym.get(gym_id);
     if (current === undefined || price_1m < current) {
