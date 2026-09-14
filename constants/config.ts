@@ -24,3 +24,10 @@ export const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK === "true";
  * - 없으면 홈에서 지도 대신 안내 문구가 표시된다.
  */
 export const KAKAO_JS_KEY = process.env.EXPO_PUBLIC_KAKAO_JS_KEY ?? "";
+
+/**
+ * 카카오 로컬 API REST 키 (.env: EXPO_PUBLIC_KAKAO_REST_KEY)
+ * - 헬스장 등록 시 장소 검색(키워드 검색)에 사용. JS 키와는 다른 별도 키다.
+ * - 없으면 검색 결과 없이 이름/주소 직접 입력만 가능하다.
+ */
+export const KAKAO_REST_KEY = process.env.EXPO_PUBLIC_KAKAO_REST_KEY ?? "";
