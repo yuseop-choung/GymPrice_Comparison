@@ -13,6 +13,7 @@ import { fontSize, radius, spacing } from "../../constants/layout";
 import { GymCard } from "../../features/gym/components/GymCard";
 import { KakaoMap } from "../../features/gym/components/KakaoMap";
 import { useNearbyGyms } from "../../features/gym/hooks";
+import { formatPrice } from "../../features/price/utils";
 import { useSyncUserLocation } from "../../features/user/hooks";
 import { useLocation } from "../../hooks/useLocation";
 
@@ -43,6 +44,10 @@ export default function HomeScreen() {
             name: g.name,
             lat: g.lat,
             lng: g.lng,
+            label:
+              g.lowest_price_1m !== null
+                ? formatPrice(g.lowest_price_1m)
+                : "가격 미정",
           }))}
           onMarkerPress={(id) => router.push(`/gym/${id}`)}
         />
