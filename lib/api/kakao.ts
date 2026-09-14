@@ -21,6 +21,7 @@ export interface KakaoPlace {
 interface KakaoKeywordDocument {
   id: string;
   place_name: string;
+  category_name: string; // 예: "스포츠,레저 > 스포츠시설 > 헬스클럽", "교통,수송 > 주차장"
   address_name: string;
   road_address_name: string;
   x: string; // 경도(lng), 문자열로 내려옴
@@ -30,6 +31,28 @@ interface KakaoKeywordDocument {
 
 interface KakaoKeywordResponse {
   documents: KakaoKeywordDocument[];
+}
+
+/**
+ * 헬스장 검색과 무관한 결과(건물 부속 주차장/출입구/지하철역 등)를 걸러내기 위한
+ * 제외 키워드. place_name 또는 category_name에 포함되면 검색 결과에서 뺀다.
+ * - 카카오 로컬 API엔 "헬스장"만 콕 집는 카테고리 코드가 없어, 키워드 검색 결과에
+ *   같은 건물의 부속 시설 POI가 섞여 나오는 걸 이 방식으로 걸러낸다.
+ */
+const IRRELEVANT_KEYWORDS = [
+  "주차장",
+  "출입구",
+  "지하철역",
+  "정류장",
+  "화장실",
+  "엘리베이터",
+  "교통,수송", // 카카오 category_name 대분류 — 주차장/역/정류장 등이 여기 속함
+];
+
+/** 시설 부속 POI(주차장, 출입구 등)로 보여 검색 결과에서 제외해야 하는지 판단 */
+export function isIrrelevantPlace(doc: KakaoKeywordDocument): boolean {
+  const text = `${doc.place_name} ${doc.category_name}`;
+  return IRRELEVANT_KEYWORDS.some((keyword) => text.includes(keyword));
 }
 
 /** API 응답 문서를 앱에서 쓰는 형태(KakaoPlace)로 변환한다 */
@@ -73,5 +96,5 @@ export async function searchPlaces(
   }
 
   const data: KakaoKeywordResponse = await response.json();
-  return data.documents.map(toKakaoPlace);
+  return data.documents.filter((doc) => !isIrrelevantPlace(doc)).map(toKakaoPlace);
 }

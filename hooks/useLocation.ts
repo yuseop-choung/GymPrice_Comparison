@@ -35,7 +35,11 @@ export function useLocation(): UseLocationResult {
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({});
+        // accuracy를 명시하지 않으면 기기가 기본(중간 정확도/네트워크 기반) 위치를
+        // 줄 수 있어 실제 위치와 수 km 씩 차이 날 수 있다. GPS 기반의 높은 정확도를 요청한다.
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
         if (mounted) {
           setCoords({
             lat: position.coords.latitude,
