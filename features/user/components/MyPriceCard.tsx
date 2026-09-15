@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { MyPriceItem } from "../../../types";
 import { PriceCard } from "../../gym/components/PriceCard";
 
@@ -14,21 +16,33 @@ interface MyPriceCardProps {
 }
 
 export function MyPriceCard({ item, onPress }: MyPriceCardProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <>
-      <Pressable onPress={onPress}>
-        <Text style={styles.gymName}>{item.gym_name}</Text>
+      <Pressable onPress={onPress} hitSlop={4}>
+        {({ pressed }) => (
+          <Text style={[styles.gymName, pressed ? styles.pressed : null]}>
+            {item.gym_name}
+          </Text>
+        )}
       </Pressable>
       <PriceCard price={item} />
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  gymName: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.primary,
-    marginBottom: spacing.xs,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    gymName: {
+      fontSize: fontSize.md,
+      fontWeight: "600",
+      color: colors.primary,
+      marginBottom: spacing.xs,
+    },
+    pressed: {
+      opacity: 0.7,
+    },
+  });
+}

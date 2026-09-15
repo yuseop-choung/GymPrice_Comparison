@@ -1,14 +1,18 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useMemo } from "react";
 import { Alert, ScrollView, StyleSheet, Text } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
 import type { PriceItemDraft } from "../../../features/price/components/PriceItemsForm";
 import { PriceItemsForm } from "../../../features/price/components/PriceItemsForm";
 import { useSubmitPrice } from "../../../features/price/hooks";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import { useAuthStore } from "../../../store/authStore";
 
 /** 가격 등록 화면 — UI 전담, 검증/전송은 훅에 위임 */
 export default function PriceSubmitScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id: gymId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -54,23 +58,25 @@ export default function PriceSubmitScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.lg,
-  },
-  title: {
-    fontSize: fontSize.xl,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  hint: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: spacing.lg,
+    },
+    title: {
+      fontSize: fontSize.xl,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    hint: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginBottom: spacing.lg,
+    },
+  });
+}

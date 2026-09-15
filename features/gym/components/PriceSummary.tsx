@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { colors } from "../../../constants/colors";
-import { fontSize, radius, spacing } from "../../../constants/layout";
+import type { ColorTheme } from "../../../constants/colors";
+import { elevation, fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { GymPrice } from "../../../types";
 import { formatPrice, summarizePrices } from "../../price/utils";
 
@@ -13,6 +15,8 @@ interface PriceSummaryProps {
 }
 
 export function PriceSummary({ prices }: PriceSummaryProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const stats = summarizePrices(prices);
 
   return (
@@ -40,43 +44,46 @@ export function PriceSummary({ prices }: PriceSummaryProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  title: {
-    fontSize: fontSize.lg,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  headerRow: {
-    flexDirection: "row",
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  row: {
-    flexDirection: "row",
-    paddingVertical: spacing.sm,
-  },
-  cell: {
-    fontSize: fontSize.md,
-  },
-  period: {
-    flex: 1,
-    color: colors.textSecondary,
-  },
-  value: {
-    flex: 1.3,
-    textAlign: "right",
-    color: colors.text,
-  },
-  min: {
-    color: colors.primary,
-    fontWeight: "700",
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: radius.lg,
+      padding: spacing.md,
+      marginBottom: spacing.lg,
+      ...elevation(colors.shadow),
+    },
+    title: {
+      fontSize: fontSize.lg,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    headerRow: {
+      flexDirection: "row",
+      paddingBottom: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    row: {
+      flexDirection: "row",
+      paddingVertical: spacing.sm,
+    },
+    cell: {
+      fontSize: fontSize.md,
+    },
+    period: {
+      flex: 1,
+      color: colors.textSecondary,
+    },
+    value: {
+      flex: 1.3,
+      textAlign: "right",
+      color: colors.text,
+    },
+    min: {
+      color: colors.primary,
+      fontWeight: "700",
+    },
+  });
+}

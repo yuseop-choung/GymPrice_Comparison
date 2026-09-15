@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { KakaoPlace } from "../../../lib/api/kakao";
 import { formatDistance } from "../utils";
 
@@ -14,6 +16,9 @@ interface GymSearchResultsProps {
 }
 
 export function GymSearchResults({ results, onSelect }: GymSearchResultsProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   if (results.length === 0) return null;
 
   return (
@@ -41,34 +46,36 @@ export function GymSearchResults({ results, onSelect }: GymSearchResultsProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  list: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    marginBottom: spacing.md,
-  },
-  item: {
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  name: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  address: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  distance: {
-    fontSize: fontSize.sm,
-    color: colors.primary,
-    marginTop: spacing.xs,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    list: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      overflow: "hidden",
+      marginBottom: spacing.md,
+    },
+    item: {
+      padding: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    pressed: {
+      opacity: 0.7,
+    },
+    name: {
+      fontSize: fontSize.md,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    address: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+    },
+    distance: {
+      fontSize: fontSize.sm,
+      color: colors.primary,
+      marginTop: spacing.xs,
+    },
+  });
+}

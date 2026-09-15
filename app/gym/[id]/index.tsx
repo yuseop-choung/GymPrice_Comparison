@@ -1,9 +1,9 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../../components/ui/Button";
 import { StateView } from "../../../components/ui/StateView";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
 import { useTrackGymView } from "../../../features/analytics/hooks";
 import { GymActions } from "../../../features/gym/components/GymActions";
@@ -12,6 +12,7 @@ import { GymPriceSection } from "../../../features/gym/components/GymPriceSectio
 import { useGymDetail } from "../../../features/gym/hooks";
 import { distanceKm, formatDistance } from "../../../features/gym/utils";
 import { useLocation } from "../../../hooks/useLocation";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import { useAuthStore } from "../../../store/authStore";
 
 /**
@@ -19,6 +20,8 @@ import { useAuthStore } from "../../../store/authStore";
  * - 가격 표시(요약/상세 토글)는 GymPriceSection에 위임한다.
  */
 export default function GymDetailScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id: gymId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { data, isLoading, error, refetch } = useGymDetail(gymId);
@@ -81,37 +84,40 @@ export default function GymDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.lg,
-  },
-  footer: {
-    padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  name: {
-    fontSize: fontSize.xl,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  address: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  distance: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  phone: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: spacing.lg,
+    },
+    footer: {
+      padding: spacing.lg,
+      backgroundColor: colors.background,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    name: {
+      fontSize: fontSize.xl,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    address: {
+      fontSize: fontSize.md,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+    },
+    distance: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+    },
+    phone: {
+      fontSize: fontSize.md,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+    },
+  });
+}

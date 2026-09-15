@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import { DEFAULT_PRICE_LABELS } from "../utils";
 import { PriceItemRow } from "./PriceItemRow";
 
@@ -54,6 +55,8 @@ export function PriceItemsForm({
   error,
   onSubmit,
 }: PriceItemsFormProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [rows, setRows] = useState<Row[]>(makeDefaultRows);
   const [memo, setMemo] = useState("");
 
@@ -119,24 +122,25 @@ export function PriceItemsForm({
   );
 }
 
-const styles = StyleSheet.create({
-  addButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  addText: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  error: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-    marginBottom: spacing.md,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    addButton: {
+      alignSelf: "flex-start",
+      backgroundColor: colors.primaryMuted,
+      borderRadius: radius.md,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      marginBottom: spacing.lg,
+    },
+    addText: {
+      fontSize: fontSize.sm,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    error: {
+      fontSize: fontSize.sm,
+      color: colors.error,
+      marginBottom: spacing.md,
+    },
+  });
+}

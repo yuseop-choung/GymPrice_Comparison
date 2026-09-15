@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useMemo } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 
 /**
  * 헬스장 상세 액션 버튼 (UI 전담)
@@ -15,6 +17,9 @@ interface GymActionsProps {
 }
 
 export function GymActions({ name, lat, lng, phone }: GymActionsProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   function call() {
     if (phone) Linking.openURL(`tel:${phone}`);
   }
@@ -30,13 +35,19 @@ export function GymActions({ name, lat, lng, phone }: GymActionsProps) {
   return (
     <View style={styles.row}>
       {phone ? (
-        <Pressable style={styles.button} onPress={call}>
+        <Pressable
+          style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
+          onPress={call}
+        >
           <Ionicons name="call-outline" size={18} color={colors.primary} />
           <Text style={styles.label}>전화</Text>
         </Pressable>
       ) : null}
 
-      <Pressable style={styles.button} onPress={openDirections}>
+      <Pressable
+        style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
+        onPress={openDirections}
+      >
         <Ionicons name="navigate-outline" size={18} color={colors.primary} />
         <Text style={styles.label}>길찾기</Text>
       </Pressable>
@@ -44,26 +55,30 @@ export function GymActions({ name, lat, lng, phone }: GymActionsProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  button: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  label: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    button: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.primaryMuted,
+    },
+    pressed: {
+      opacity: 0.7,
+    },
+    label: {
+      fontSize: fontSize.md,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+  });
+}

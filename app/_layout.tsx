@@ -1,11 +1,14 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useTrackAppOpen } from "../features/analytics/hooks";
 import { usePushRegistration } from "../features/notifications/hooks";
+import { useIsDarkMode, useThemeColors } from "../hooks/useThemeColors";
 import { useAuthStore } from "../store/authStore";
 import { useOnboardingStore } from "../store/onboardingStore";
+import { useThemeStore } from "../store/themeStore";
 
 // 세션 복구·온보딩 여부 확인이 끝나기 전까지 네이티브 스플래시를 계속 띄워둔다
 // (아래에서 확인이 끝나는 시점에 직접 hideAsync를 호출한다).
@@ -15,7 +18,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 /**
  * 루트 레이아웃 (Expo Router)
- * - 앱 시작 시 온보딩 여부·인증 세션을 복구하고 화면을 분기한다.
+ * - 앱 시작 시 온보딩 여부·인증 세션·테마 설정을 복구하고 화면을 분기한다.
  * - 온보딩 미완료 → 온보딩, 비로그인 → 로그인, 로그인 → 탭.
  */
 export default function RootLayout() {
@@ -24,6 +27,10 @@ export default function RootLayout() {
   const initialize = useAuthStore((state) => state.initialize);
   const hasSeen = useOnboardingStore((state) => state.hasSeen);
   const loadOnboarding = useOnboardingStore((state) => state.load);
+  const isThemeLoaded = useThemeStore((state) => state.isLoaded);
+  const loadTheme = useThemeStore((state) => state.load);
+  const colors = useThemeColors();
+  const isDark = useIsDarkMode();
   const segments = useSegments();
   const router = useRouter();
 
@@ -33,10 +40,11 @@ export default function RootLayout() {
   useEffect(() => {
     initialize();
     loadOnboarding();
-  }, [initialize, loadOnboarding]);
+    loadTheme();
+  }, [initialize, loadOnboarding, loadTheme]);
 
   useEffect(() => {
-    if (!isInitialized || hasSeen === null) return;
+    if (!isInitialized || hasSeen === null || !isThemeLoaded) return;
     SplashScreen.hideAsync().catch(() => {
       // 스플래시 숨기기 실패는 무시(이미 숨겨진 경우 등)
     });
@@ -56,23 +64,31 @@ export default function RootLayout() {
     } else if (user && inAuthGroup) {
       router.replace("/");
     }
-  }, [user, isInitialized, hasSeen, segments, router]);
+  }, [user, isInitialized, hasSeen, isThemeLoaded, segments, router]);
 
   return (
     <SafeAreaProvider>
-      <Stack>
+      <StatusBar style={isDark ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.text,
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="gym/[id]/index" options={{ title: "헬스장 상세" }} />
-      <Stack.Screen
-        name="gym/[id]/price-submit"
-        options={{ title: "가격 등록" }}
-      />
-      <Stack.Screen
-        name="gym/[id]/price-edit"
-        options={{ title: "가격 수정" }}
-      />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="gym/[id]/index" options={{ title: "헬스장 상세" }} />
+        <Stack.Screen
+          name="gym/[id]/price-submit"
+          options={{ title: "가격 등록" }}
+        />
+        <Stack.Screen
+          name="gym/[id]/price-edit"
+          options={{ title: "가격 수정" }}
+        />
         <Stack.Screen
           name="gym/[id]/detail-edit"
           options={{ title: "부가정보 수정" }}

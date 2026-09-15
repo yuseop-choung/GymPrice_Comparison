@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Input } from "../../../components/ui/Input";
-import { colors } from "../../../constants/colors";
-import { fontSize, radius, spacing } from "../../../constants/layout";
+import type { ColorTheme } from "../../../constants/colors";
+import { fontSize, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 
 /**
  * 가격 등록 폼의 한 행 (UI 전담)
@@ -25,6 +27,9 @@ export function PriceItemRow({
   onPriceChange,
   onRemove,
 }: PriceItemRowProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.row}>
       <View style={styles.labelCell}>
@@ -43,7 +48,7 @@ export function PriceItemRow({
         />
       </View>
       {removable ? (
-        <Pressable onPress={onRemove} style={styles.removeButton}>
+        <Pressable onPress={onRemove} style={styles.removeButton} hitSlop={8}>
           <Text style={styles.removeText}>삭제</Text>
         </Pressable>
       ) : (
@@ -53,31 +58,33 @@ export function PriceItemRow({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  labelCell: {
-    flex: 1.1,
-  },
-  priceCell: {
-    flex: 1,
-  },
-  fixedLabel: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.text,
-    paddingVertical: spacing.sm,
-  },
-  removeButton: {
-    width: 40,
-    alignItems: "center",
-    marginBottom: spacing.md,
-  },
-  removeText: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    labelCell: {
+      flex: 1.1,
+    },
+    priceCell: {
+      flex: 1,
+    },
+    fixedLabel: {
+      fontSize: fontSize.md,
+      fontWeight: "600",
+      color: colors.text,
+      paddingVertical: spacing.sm,
+    },
+    removeButton: {
+      width: 40,
+      alignItems: "center",
+      marginBottom: spacing.md,
+    },
+    removeText: {
+      fontSize: fontSize.sm,
+      color: colors.error,
+    },
+  });
+}
