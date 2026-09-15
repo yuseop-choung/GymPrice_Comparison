@@ -69,13 +69,37 @@ window.GymPriceAdmin = (function () {
       '<nav class="side-nav">' +
       NAV_ITEMS.map(function (item) {
         return (
-          '<a href="' + item.href + '"' + (item.key === activeKey ? ' class="active"' : "") + ">" +
-          item.label +
+          '<a href="' + item.href + '" data-nav-key="' + item.key + '"' +
+          (item.key === activeKey ? ' class="active"' : "") + ">" +
+          '<span class="nav-label">' + item.label + "</span>" +
+          '<span class="nav-badge" style="display:none"></span>' +
           "</a>"
         );
       }).join("") +
       "</nav>"
     );
+  }
+
+  /** 내비게이션 항목에 숫자 배지를 표시/숨김 (0이면 숨김) */
+  function setNavBadge(key, count) {
+    var el = document.querySelector('[data-nav-key="' + key + '"] .nav-badge');
+    if (!el) return;
+    if (count > 0) {
+      el.textContent = count > 99 ? "99+" : String(count);
+      el.style.display = "";
+    } else {
+      el.style.display = "none";
+    }
+  }
+
+  /** "가격 심사" 탭에 심사 대기 중인 제보 수를 배지로 표시한다 */
+  function loadPendingBadge(sb) {
+    sb.from("gym_prices")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .then(function (res) {
+        if (!res.error) setNavBadge("index", res.count || 0);
+      });
   }
 
   /**
@@ -230,6 +254,8 @@ window.GymPriceAdmin = (function () {
     fmtDate: fmtDate,
     toDayKey: toDayKey,
     renderNav: renderNav,
+    setNavBadge: setNavBadge,
+    loadPendingBadge: loadPendingBadge,
     boot: boot
   };
 })();

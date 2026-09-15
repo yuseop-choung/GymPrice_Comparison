@@ -4,14 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>GymPrice Admin</title>
-<link rel="stylesheet" href="style.css?v=2" />
+<link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
 <div id="app"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
-<script src="shared.js?v=2"></script>
+<script src="shared.js?v=3"></script>
 <script>
 (function () {
   var G = window.GymPriceAdmin;
@@ -20,6 +20,7 @@
   var currentTab = "users"; // "users" | "gyms"
   var allUsers = [];
   var allGyms = [];
+  var editingGymId = null;
 
   function renderManage(sb, user, renderLogin) {
     currentUser = user;
@@ -49,6 +50,7 @@
     syncTabs();
     loadUsers(sb);
     loadGyms(sb);
+    G.loadPendingBadge(sb);
   }
 
   function syncTabs() {
@@ -154,7 +156,7 @@
   // ---------- 헬스장 탭 (테이블) ----------
   function loadGyms(sb) {
     sb.from("gyms")
-      .select("id, name, address, created_at")
+      .select("id, name, address, phone, created_at")
       .order("created_at", { ascending: false })
       .then(function (res) {
         if (res.error) {
@@ -167,6 +169,34 @@
       });
   }
 
+  function gymRowView(g) {
+    return (
+      "<tr>" +
+      "<td>" + G.escapeHtml(g.name) + "</td>" +
+      "<td>" + G.escapeHtml(g.address) + "</td>" +
+      '<td class="cell-muted">' + G.fmtDate(g.created_at) + "</td>" +
+      '<td><div class="cell-actions">' +
+      '  <button class="btn-ghost" data-edit-gym="' + g.id + '">수정</button>' +
+      '  <button class="btn-reject" data-delete-gym="' + g.id + '">삭제</button>' +
+      "</div></td>" +
+      "</tr>"
+    );
+  }
+
+  function gymRowEdit(g) {
+    return (
+      '<tr data-edit-row="' + g.id + '">' +
+      '<td><input class="edit-name" value="' + G.escapeHtml(g.name) + '" /></td>' +
+      '<td><input class="edit-address" value="' + G.escapeHtml(g.address) + '" /></td>' +
+      '<td class="cell-muted">전화: <input class="edit-phone" value="' + G.escapeHtml(g.phone || "") + '" placeholder="선택" /></td>' +
+      '<td><div class="cell-actions">' +
+      '  <button class="btn-approve" data-save-gym="' + g.id + '">저장</button>' +
+      '  <button class="btn-ghost" data-cancel-edit="' + g.id + '">취소</button>' +
+      "</div></td>" +
+      "</tr>"
+    );
+  }
+
   function renderGyms(sb, gyms) {
     var body = document.getElementById("manage-body");
     if (gyms.length === 0) {
@@ -174,18 +204,7 @@
       return;
     }
     var rows = gyms
-      .map(function (g) {
-        return (
-          "<tr>" +
-          "<td>" + G.escapeHtml(g.name) + "</td>" +
-          "<td>" + G.escapeHtml(g.address) + "</td>" +
-          '<td class="cell-muted">' + G.fmtDate(g.created_at) + "</td>" +
-          '<td><div class="cell-actions">' +
-          '  <button class="btn-reject" data-delete-gym="' + g.id + '">삭제</button>' +
-          "</div></td>" +
-          "</tr>"
-        );
-      })
+      .map(function (g) { return g.id === editingGymId ? gymRowEdit(g) : gymRowView(g); })
       .join("");
 
     body.innerHTML =
@@ -194,6 +213,44 @@
       "<tbody>" + rows + "</tbody>" +
       "</table></div>";
 
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-edit-gym]"), function (btn) {
+      btn.onclick = function () {
+        editingGymId = btn.getAttribute("data-edit-gym");
+        renderGyms(sb, allGyms);
+      };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-cancel-edit]"), function (btn) {
+      btn.onclick = function () {
+        editingGymId = null;
+        renderGyms(sb, allGyms);
+      };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-save-gym]"), function (btn) {
+      btn.onclick = function () {
+        var id = btn.getAttribute("data-save-gym");
+        var rowEl = body.querySelector('tr[data-edit-row="' + id + '"]');
+        var name = rowEl.querySelector(".edit-name").value.trim();
+        var address = rowEl.querySelector(".edit-address").value.trim();
+        var phone = rowEl.querySelector(".edit-phone").value.trim();
+        if (!name || !address) {
+          alert("이름과 주소는 비워둘 수 없습니다.");
+          return;
+        }
+        btn.disabled = true;
+        sb.from("gyms")
+          .update({ name: name, address: address, phone: phone === "" ? null : phone })
+          .eq("id", id)
+          .then(function (res) {
+            if (res.error) {
+              alert("수정 실패: " + res.error.message);
+              btn.disabled = false;
+              return;
+            }
+            editingGymId = null;
+            loadGyms(sb);
+          });
+      };
+    });
     Array.prototype.forEach.call(body.querySelectorAll("button[data-delete-gym]"), function (btn) {
       btn.onclick = function () {
         var id = btn.getAttribute("data-delete-gym");

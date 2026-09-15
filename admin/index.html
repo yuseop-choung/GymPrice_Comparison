@@ -4,19 +4,20 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>GymPrice Admin</title>
-<link rel="stylesheet" href="style.css?v=2" />
+<link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
 <div id="app"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
-<script src="shared.js?v=2"></script>
+<script src="shared.js?v=3"></script>
 <script>
 (function () {
   var G = window.GymPriceAdmin;
   var app = document.getElementById("app");
   var currentTab = "pending";
+  var currentItems = [];
 
   function renderAdmin(sb, currentUser, renderLogin) {
     app.innerHTML =
@@ -31,6 +32,7 @@
       '  <div class="tab" data-tab="approved">승인됨</div>' +
       '  <div class="tab" data-tab="rejected">거절됨</div>' +
       '</div>' +
+      '<input id="price-search" placeholder="헬스장 이름으로 검색" style="margin-bottom:12px" />' +
       '<div id="list"><div class="empty">불러오는 중...</div></div>';
 
     document.getElementById("logout").onclick = function () {
@@ -42,7 +44,20 @@
         loadList(sb);
       };
     });
+    document.getElementById("price-search").addEventListener("input", function () {
+      renderList(sb, filterItems(currentItems));
+    });
     loadList(sb);
+    G.loadPendingBadge(sb);
+  }
+
+  function filterItems(items) {
+    var q = document.getElementById("price-search").value.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(function (item) {
+      var name = (item.gyms && item.gyms.name) || "";
+      return name.toLowerCase().indexOf(q) !== -1;
+    });
   }
 
   function loadList(sb) {
@@ -61,14 +76,16 @@
           listEl.innerHTML = '<div class="error-text">' + G.escapeHtml(res.error.message) + '</div>';
           return;
         }
-        renderList(sb, res.data || []);
+        currentItems = res.data || [];
+        renderList(sb, filterItems(currentItems));
+        G.loadPendingBadge(sb);
       });
   }
 
   function renderList(sb, items) {
     var listEl = document.getElementById("list");
     if (items.length === 0) {
-      listEl.innerHTML = '<div class="empty">해당 상태의 제보가 없습니다.</div>';
+      listEl.innerHTML = '<div class="empty">해당하는 제보가 없습니다.</div>';
       return;
     }
 
