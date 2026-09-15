@@ -18,7 +18,7 @@ import {
   getPriceMock,
   registerGymMock,
   saveGymDetailMock,
-  submitPriceMock,
+  submitPricesMock,
   updatePriceMock,
 } from "./mock";
 import { distanceKm } from "./utils";
@@ -60,17 +60,20 @@ export async function getNearbyGyms(
   );
   if (inRadius.length === 0) return [];
 
-  // 반경 내 헬스장들의 1개월권 가격을 모아 최저가를 계산한다.
+  // 반경 내 헬스장들의 "1개월" 가격을 모아 최저가를 계산한다.
+  // (헬스장은 PT 횟수권 등 다른 라벨의 가격도 등록할 수 있지만, 홈/리스트의
+  //  대표 최저가는 기간권 비교가 핵심인 서비스 특성상 "1개월"로 고정한다.)
   const ids = inRadius.map((gym) => gym.id);
   const { data: prices, error: priceError } = await supabase
     .from("gym_prices")
-    .select("gym_id, user_id, price_1m, status, created_at")
+    .select("gym_id, user_id, price, status, created_at")
+    .eq("label", "1개월")
     .in("gym_id", ids)
     .returns<
       {
         gym_id: string;
         user_id: string;
-        price_1m: number | null;
+        price: number;
         status: string;
         created_at: string;
       }[]
@@ -85,11 +88,10 @@ export async function getNearbyGyms(
   const latestPrices = latestByGroup(approved, (p) => `${p.gym_id}:${p.user_id}`);
 
   const lowestByGym = new Map<string, number>();
-  for (const { gym_id, price_1m } of latestPrices) {
-    if (price_1m === null) continue;
+  for (const { gym_id, price } of latestPrices) {
     const current = lowestByGym.get(gym_id);
-    if (current === undefined || price_1m < current) {
-      lowestByGym.set(gym_id, price_1m);
+    if (current === undefined || price < current) {
+      lowestByGym.set(gym_id, price);
     }
   }
 
@@ -249,23 +251,26 @@ export async function deletePrice(priceId: string): Promise<void> {
 
 /**
  * 가격 정보 등록 (크라우드소싱)
+ * - 한 번의 등록에서 여러 항목(예: "1개월" + "PT 10회")을 함께 제출할 수 있어
+ *   배열로 받아 한 번에 insert한다. 각 항목은 gym_prices의 별도 행이 된다.
  * - status는 클라이언트가 지정할 수 없다 (DB 기본값 'pending'으로 시작 →
  *   관리자 승인 후에만 다른 유저에게 노출된다. supabase/schema.sql의 컬럼 권한 참고)
  */
-export async function submitPrice(
-  data: Omit<GymPrice, "id" | "created_at" | "status">
-): Promise<GymPrice> {
-  if (USE_MOCK) return submitPriceMock(data);
+export async function submitPrices(
+  items: Omit<GymPrice, "id" | "created_at" | "status">[]
+): Promise<GymPrice[]> {
+  if (USE_MOCK) return submitPricesMock(items);
 
   const { data: created, error } = await supabase
     .from("gym_prices")
-    .insert(data)
+    .insert(items)
     .select("*")
-    .returns<GymPrice[]>()
-    .single();
+    .returns<GymPrice[]>();
 
   if (error) throw new Error(error.message);
-  if (!created) throw new Error("가격 등록에 실패했습니다.");
+  if (!created || created.length === 0) {
+    throw new Error("가격 등록에 실패했습니다.");
+  }
 
   return created;
 }

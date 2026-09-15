@@ -4,14 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>GymPrice Admin</title>
-<link rel="stylesheet" href="style.css?v=3" />
+<link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
 
 <div id="app"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
-<script src="shared.js?v=3"></script>
+<script src="shared.js?v=4"></script>
 <script>
 (function () {
   var G = window.GymPriceAdmin;
@@ -118,12 +118,7 @@
         '  <span class="status-badge ' + badgeClass[item.status] + '">' + badgeText[item.status] + '</span>' +
         '  <div class="price-name">' + G.escapeHtml(gym.name || "알 수 없는 헬스장") + '</div>' +
         '  <div class="price-address">' + G.escapeHtml(gym.address || "") + '</div>' +
-        '  <div class="price-grid">' +
-        '    <div class="price-item"><span>1개월</span><b>' + G.fmtPrice(item.price_1m) + '</b></div>' +
-        '    <div class="price-item"><span>3개월</span><b>' + G.fmtPrice(item.price_3m) + '</b></div>' +
-        '    <div class="price-item"><span>6개월</span><b>' + G.fmtPrice(item.price_6m) + '</b></div>' +
-        '    <div class="price-item"><span>12개월</span><b>' + G.fmtPrice(item.price_12m) + '</b></div>' +
-        '  </div>' +
+        '  <div class="price-item"><span>' + G.escapeHtml(item.label) + '</span><b>' + G.fmtPrice(item.price) + '</b></div>' +
         (item.memo ? '<div class="memo">' + G.escapeHtml(item.memo) + '</div>' : '') +
         '  <div class="meta">제보자: ' + G.escapeHtml(submitter.nickname || submitter.email || "알 수 없음") + ' · ' + G.fmtDate(item.created_at) + '</div>' +
         actionsHtml +

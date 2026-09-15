@@ -22,9 +22,11 @@ export function GymCard({ gym, onPress }: GymCardProps) {
       <Text style={styles.name} numberOfLines={1}>
         {gym.name}
       </Text>
-      <Text style={styles.address} numberOfLines={1}>
-        {gym.address}
-      </Text>
+      {gym.address ? (
+        <Text style={styles.address} numberOfLines={1}>
+          {gym.address}
+        </Text>
+      ) : null}
 
       {gym.lowest_price_1m !== null ? (
         <Text style={styles.price}>

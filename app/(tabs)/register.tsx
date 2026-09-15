@@ -63,7 +63,7 @@ export default function RegisterScreen() {
     const location = selectedCoords ?? coords;
     submit({
       name: name.trim(),
-      address: address.trim(),
+      address: address.trim() === "" ? null : address.trim(),
       lat: location.lat,
       lng: location.lng,
       phone: phone.trim() === "" ? null : phone.trim(),
@@ -100,10 +100,10 @@ export default function RegisterScreen() {
         placeholder="예: 강철짐 강남점"
       />
       <Input
-        label="주소"
+        label="주소 (선택)"
         value={address}
         onChangeText={setAddress}
-        placeholder="검색 결과가 없으면 직접 입력해주세요"
+        placeholder="검색 결과가 없으면 직접 입력해주세요 (생략 가능)"
       />
       <Input
         label="전화번호 (선택)"

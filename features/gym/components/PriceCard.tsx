@@ -12,31 +12,23 @@ const STATUS_LABEL: Record<PriceStatus, { text: string; color: string }> = {
 };
 
 /**
- * 가격 1건을 표시하는 카드 (UI 전담)
- * - 1/3/6/12개월 가격과 메모, 심사 상태를 보여준다.
+ * 가격 항목 1건(라벨 + 가격)을 표시하는 카드 (UI 전담)
+ * - 메모, 심사 상태도 함께 보여준다.
  */
 interface PriceCardProps {
   price: GymPrice;
 }
 
 export function PriceCard({ price }: PriceCardProps) {
-  const rows = [
-    { label: "1개월", value: price.price_1m },
-    { label: "3개월", value: price.price_3m },
-    { label: "6개월", value: price.price_6m },
-    { label: "12개월", value: price.price_12m },
-  ];
   const status = STATUS_LABEL[price.status];
 
   return (
     <View style={styles.card}>
       <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
-      {rows.map((row) => (
-        <View key={row.label} style={styles.row}>
-          <Text style={styles.label}>{row.label}</Text>
-          <Text style={styles.value}>{formatPrice(row.value)}</Text>
-        </View>
-      ))}
+      <View style={styles.row}>
+        <Text style={styles.label}>{price.label}</Text>
+        <Text style={styles.value}>{formatPrice(price.price)}</Text>
+      </View>
       {price.memo ? <Text style={styles.memo}>{price.memo}</Text> : null}
     </View>
   );

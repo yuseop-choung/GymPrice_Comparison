@@ -1,41 +1,38 @@
 import { act, renderHook } from "@testing-library/react-native";
 import type { GymPrice } from "../../types";
-import { submitPrice } from "../gym/api";
+import { submitPrices } from "../gym/api";
 import { useSubmitPrice } from "./hooks";
 
 // api 모듈을 목으로 대체 (실제 supabase 로드 방지)
 jest.mock("../gym/api", () => ({
-  submitPrice: jest.fn(),
+  submitPrices: jest.fn(),
   getMyPrices: jest.fn(),
   getPrice: jest.fn(),
   updatePrice: jest.fn(),
   deletePrice: jest.fn(),
 }));
 
-const submitPriceMock = submitPrice as jest.Mock;
+const submitPricesMock = submitPrices as jest.Mock;
 
-const baseInput = {
+const baseItem = {
   gym_id: "g",
   user_id: "u",
-  price_3m: null,
-  price_6m: null,
-  price_12m: null,
   memo: null,
 };
 
 describe("useSubmitPrice", () => {
-  beforeEach(() => submitPriceMock.mockReset());
+  beforeEach(() => submitPricesMock.mockReset());
 
-  it("가격을 하나도 입력하지 않으면 에러를 내고 API를 호출하지 않는다", async () => {
+  it("항목이 하나도 없으면 에러를 내고 API를 호출하지 않는다", async () => {
     const onSuccess = jest.fn();
     const { result } = await renderHook(() => useSubmitPrice({ onSuccess }));
 
     await act(async () => {
-      await result.current.submit({ ...baseInput, price_1m: null });
+      await result.current.submit([]);
     });
 
     expect(result.current.error).toBe("최소 1개 이상의 가격을 입력해주세요.");
-    expect(submitPriceMock).not.toHaveBeenCalled();
+    expect(submitPricesMock).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
@@ -44,25 +41,41 @@ describe("useSubmitPrice", () => {
     const { result } = await renderHook(() => useSubmitPrice({ onSuccess }));
 
     await act(async () => {
-      await result.current.submit({ ...baseInput, price_1m: -5000 });
+      await result.current.submit([{ ...baseItem, label: "1개월", price: -5000 }]);
     });
 
     expect(result.current.error).not.toBeNull();
-    expect(submitPriceMock).not.toHaveBeenCalled();
+    expect(submitPricesMock).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
-  it("유효하면 submitPrice 호출 후 onSuccess를 부른다", async () => {
-    const created = { id: "p1", created_at: "x" } as GymPrice;
-    submitPriceMock.mockResolvedValue(created);
+  it("라벨이 비어있으면 에러를 내고 API를 호출하지 않는다", async () => {
+    const { result } = await renderHook(() => useSubmitPrice());
+
+    await act(async () => {
+      await result.current.submit([{ ...baseItem, label: "  ", price: 50000 }]);
+    });
+
+    expect(result.current.error).not.toBeNull();
+    expect(submitPricesMock).not.toHaveBeenCalled();
+  });
+
+  it("유효하면 submitPrices를 배열로 호출하고 성공 시 onSuccess를 부른다", async () => {
+    const created = [{ id: "p1", created_at: "x" } as GymPrice];
+    submitPricesMock.mockResolvedValue(created);
     const onSuccess = jest.fn();
     const { result } = await renderHook(() => useSubmitPrice({ onSuccess }));
 
+    const items = [
+      { ...baseItem, label: "1개월", price: 50000 },
+      { ...baseItem, label: "PT 10회", price: 500000 },
+    ];
+
     await act(async () => {
-      await result.current.submit({ ...baseInput, price_1m: 50000 });
+      await result.current.submit(items);
     });
 
-    expect(submitPriceMock).toHaveBeenCalledTimes(1);
+    expect(submitPricesMock).toHaveBeenCalledWith(items);
     expect(onSuccess).toHaveBeenCalledWith(created);
     expect(result.current.error).toBeNull();
   });

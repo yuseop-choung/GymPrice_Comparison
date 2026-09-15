@@ -30,22 +30,40 @@ alter table public.users add column if not exists is_suspended boolean not null 
 create table if not exists public.gyms (
   id         uuid        primary key default gen_random_uuid(),
   name       text        not null,
-  address    text        not null,
+  address    text,
   lat        double precision not null,
   lng        double precision not null,
   phone      text,
   created_at timestamptz not null default now()
 );
 
+-- 주소는 선택 입력으로 변경 (이미 만들어진 테이블에도 적용). 검색으로 헬스장을
+-- 찾아 등록하면 자동으로 채워지지만, 직접 입력 시에는 비워둘 수 있다.
+alter table public.gyms alter column address drop not null;
+
+-- ⚠️ gym_prices를 "기간별 고정 컬럼(price_1m/3m/6m/12m)" 구조에서
+-- "라벨(자유 텍스트) + 가격 1건 = 1행" 구조로 전면 교체한다. PT 횟수권처럼
+-- 기간권이 아닌 가격도 자유롭게 등록할 수 있게 하기 위함. 예전 구조의 데이터는
+-- 새 구조로 자동 이전하지 않으므로(테스트 데이터만 있다는 전제), 예전 컬럼이
+-- 남아있으면 통째로 지우고 새로 만든다.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'gym_prices' and column_name = 'price_1m'
+  ) then
+    drop table public.gym_prices cascade;
+  end if;
+end $$;
+
 create table if not exists public.gym_prices (
   id         uuid        primary key default gen_random_uuid(),
   gym_id     uuid        not null references public.gyms(id) on delete cascade,
   user_id    uuid        not null references public.users(uid) on delete cascade,
-  price_1m   integer,
-  price_3m   integer,
-  price_6m   integer,
-  price_12m  integer,
+  label      text        not null, -- 예: "1개월", "3개월", "PT 10회"
+  price      integer     not null,
   memo       text,
+  status     text        not null default 'pending', -- 관리자 승인(approved) 후에만 공개 노출
   created_at timestamptz not null default now()
 );
 
@@ -57,18 +75,9 @@ begin
     select 1 from pg_constraint where conname = 'gym_prices_price_range'
   ) then
     alter table public.gym_prices
-      add constraint gym_prices_price_range check (
-        (price_1m  is null or price_1m  between 1000 and 5000000) and
-        (price_3m  is null or price_3m  between 1000 and 15000000) and
-        (price_6m  is null or price_6m  between 1000 and 30000000) and
-        (price_12m is null or price_12m between 1000 and 60000000)
-      );
+      add constraint gym_prices_price_range check (price between 1000 and 10000000);
   end if;
 end $$;
-
--- 가격 심사 상태 (크라우드소싱 특성상 허위/장난 가격을 걸러내기 위해
--- 관리자가 승인(approved)한 가격만 클라이언트에 공개 노출한다). 이미 만들어진 테이블에도 적용.
-alter table public.gym_prices add column if not exists status text not null default 'pending';
 
 do $$
 begin
@@ -79,6 +88,8 @@ begin
       add constraint gym_prices_status_check check (status in ('pending', 'approved', 'rejected'));
   end if;
 end $$;
+
+create index if not exists gym_prices_gym_id_idx on public.gym_prices (gym_id);
 
 create table if not exists public.gym_details (
   id              uuid        primary key default gen_random_uuid(),
@@ -282,11 +293,11 @@ create policy "gym_prices_delete_admin" on public.gym_prices for delete to authe
 -- 권한으로 gym_id/user_id는 애초에 수정 대상에서 제외하고, status는 INSERT 시 지정할 수
 -- 없게(항상 DB 기본값 'pending') 막는다.
 revoke insert on public.gym_prices from authenticated;
-grant insert (gym_id, user_id, price_1m, price_3m, price_6m, price_12m, memo)
+grant insert (gym_id, user_id, label, price, memo)
   on public.gym_prices to authenticated;
 
 revoke update on public.gym_prices from authenticated;
-grant update (price_1m, price_3m, price_6m, price_12m, memo, status)
+grant update (label, price, memo, status)
   on public.gym_prices to authenticated;
 
 -- status 컬럼 UPDATE 권한은 위에서 열어줬지만, "일반 유저는 status를 못 바꾸고
@@ -298,20 +309,15 @@ language plpgsql
 as $$
 begin
   if public.is_admin() then
-    -- 관리자는 심사(status)만 바꿀 수 있다. 가격 값/메모는 못 바꾸게 원래 값으로 되돌린다.
-    new.price_1m := old.price_1m;
-    new.price_3m := old.price_3m;
-    new.price_6m := old.price_6m;
-    new.price_12m := old.price_12m;
+    -- 관리자는 심사(status)만 바꿀 수 있다. 라벨/가격/메모는 못 바꾸게 원래 값으로 되돌린다.
+    new.label := old.label;
+    new.price := old.price;
     new.memo := old.memo;
   else
     -- 일반 유저(작성자)는 status를 직접 바꿀 수 없다.
     new.status := old.status;
-    if (new.price_1m is distinct from old.price_1m
-        or new.price_3m is distinct from old.price_3m
-        or new.price_6m is distinct from old.price_6m
-        or new.price_12m is distinct from old.price_12m) then
-      -- 가격 값을 수정하면 다시 심사받도록 pending으로 되돌린다.
+    if (new.price is distinct from old.price or new.label is distinct from old.label) then
+      -- 라벨/가격을 수정하면 다시 심사받도록 pending으로 되돌린다.
       new.status := 'pending';
     end if;
   end if;
