@@ -9,8 +9,8 @@ import {
 } from "../gym/api";
 import { validatePriceValues } from "./utils";
 
-/** 가격 등록 입력값 (id, created_at 은 서버에서 생성) */
-type PriceInput = Omit<GymPrice, "id" | "created_at">;
+/** 가격 등록 입력값 (id, created_at, status 는 서버에서 생성/관리) */
+type PriceInput = Omit<GymPrice, "id" | "created_at" | "status">;
 
 interface UseSubmitPriceParams {
   /** 등록 성공 시 호출되는 콜백 */

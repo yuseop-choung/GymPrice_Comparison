@@ -64,18 +64,25 @@ export async function getNearbyGyms(
   const ids = inRadius.map((gym) => gym.id);
   const { data: prices, error: priceError } = await supabase
     .from("gym_prices")
-    .select("gym_id, user_id, price_1m, created_at")
+    .select("gym_id, user_id, price_1m, status, created_at")
     .in("gym_id", ids)
     .returns<
-      { gym_id: string; user_id: string; price_1m: number | null; created_at: string }[]
+      {
+        gym_id: string;
+        user_id: string;
+        price_1m: number | null;
+        status: string;
+        created_at: string;
+      }[]
     >();
   if (priceError) throw new Error(priceError.message);
 
+  // 관리자 승인(approved)된 가격만 공개 최저가에 반영한다. RLS가 본인의 심사 대기 중인
+  // 가격도 함께 내려줄 수 있어(본인 조회 허용) 여기서 한 번 더 걸러낸다.
+  const approved = (prices ?? []).filter((p) => p.status === "approved");
+
   // 같은 유저가 같은 헬스장에 중복 제보한 경우 최신 1건만 최저가 계산에 반영한다.
-  const latestPrices = latestByGroup(
-    prices ?? [],
-    (p) => `${p.gym_id}:${p.user_id}`
-  );
+  const latestPrices = latestByGroup(approved, (p) => `${p.gym_id}:${p.user_id}`);
 
   const lowestByGym = new Map<string, number>();
   for (const { gym_id, price_1m } of latestPrices) {
@@ -242,9 +249,11 @@ export async function deletePrice(priceId: string): Promise<void> {
 
 /**
  * 가격 정보 등록 (크라우드소싱)
+ * - status는 클라이언트가 지정할 수 없다 (DB 기본값 'pending'으로 시작 →
+ *   관리자 승인 후에만 다른 유저에게 노출된다. supabase/schema.sql의 컬럼 권한 참고)
  */
 export async function submitPrice(
-  data: Omit<GymPrice, "id" | "created_at">
+  data: Omit<GymPrice, "id" | "created_at" | "status">
 ): Promise<GymPrice> {
   if (USE_MOCK) return submitPriceMock(data);
 

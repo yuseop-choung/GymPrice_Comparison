@@ -28,6 +28,9 @@ export interface GymWithPrice extends Gym {
   lowest_price_1m: number | null;
 }
 
+/** 가격 심사 상태 — 관리자가 승인(approved)한 가격만 다른 유저에게 공개 노출된다 */
+export type PriceStatus = "pending" | "approved" | "rejected";
+
 /** 헬스장 가격 (크라우드소싱으로 유저가 등록) */
 export interface GymPrice {
   id: string;
@@ -38,6 +41,7 @@ export interface GymPrice {
   price_6m: number | null; // 6개월권
   price_12m: number | null; // 12개월권
   memo: string | null;
+  status: PriceStatus;
   created_at: string;
 }
 

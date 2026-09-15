@@ -18,6 +18,10 @@ create table if not exists public.users (
 -- 이미 만들어진 users 테이블에도 컬럼 추가
 alter table public.users add column if not exists home_lat double precision;
 alter table public.users add column if not exists home_lng double precision;
+-- 관리자 여부 (가격 심사 등 관리자 전용 기능에 사용). 앱에는 관리자 지정 UI가 없으므로
+-- 최초 관리자는 SQL Editor에서 직접 켜야 한다:
+--   update public.users set is_admin = true where email = '본인 이메일';
+alter table public.users add column if not exists is_admin boolean not null default false;
 
 create table if not exists public.gyms (
   id         uuid        primary key default gen_random_uuid(),
@@ -58,6 +62,20 @@ begin
   end if;
 end $$;
 
+-- 가격 심사 상태 (크라우드소싱 특성상 허위/장난 가격을 걸러내기 위해
+-- 관리자가 승인(approved)한 가격만 클라이언트에 공개 노출한다). 이미 만들어진 테이블에도 적용.
+alter table public.gym_prices add column if not exists status text not null default 'pending';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_prices_status_check'
+  ) then
+    alter table public.gym_prices
+      add constraint gym_prices_status_check check (status in ('pending', 'approved', 'rejected'));
+  end if;
+end $$;
+
 create table if not exists public.gym_details (
   id              uuid        primary key default gen_random_uuid(),
   gym_id          uuid        not null unique references public.gyms(id) on delete cascade,
@@ -94,6 +112,16 @@ alter table public.gym_prices  enable row level security;
 alter table public.gym_details enable row level security;
 alter table public.push_tokens enable row level security;
 
+-- 호출한 유저가 관리자인지 확인하는 헬퍼.
+-- (자기 자신의 uid로만 조회하므로 users_select_self 정책 범위 안에서 안전하게 동작한다.)
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+as $$
+  select coalesce((select is_admin from public.users where uid = auth.uid()), false);
+$$;
+
 -- ----------------------------------------------------------------
 -- 3) 정책
 --   SELECT : 누구나 (단, users는 본인만) / INSERT : 로그인 유저 / UPDATE·DELETE : 본인 데이터만
@@ -104,6 +132,10 @@ alter table public.push_tokens enable row level security;
 drop policy if exists "users_select_all" on public.users;
 create policy "users_select_self" on public.users for select to authenticated
   using (auth.uid() = uid);
+-- 관리자는 가격 심사 화면에서 제보자 닉네임을 봐야 하므로 전체 조회를 허용한다
+-- (is_admin=true인 계정만 해당 — 일반 유저는 여전히 본인만 조회 가능).
+create policy "users_select_admin" on public.users for select to authenticated
+  using (public.is_admin());
 create policy "users_update_self" on public.users for update to authenticated
   using (auth.uid() = uid) with check (auth.uid() = uid);
 create policy "users_delete_self" on public.users for delete to authenticated
@@ -115,22 +147,79 @@ create policy "users_delete_self" on public.users for delete to authenticated
 create policy "gyms_select_all"  on public.gyms for select using (true);
 create policy "gyms_insert_auth" on public.gyms for insert to authenticated with check (true);
 
--- gym_prices (본인 데이터만 수정/삭제)
-create policy "gym_prices_select_all"   on public.gym_prices for select using (true);
+-- gym_prices
+-- SELECT: 승인(approved)된 가격은 누구나, 본인 가격은 심사 상태와 무관하게 본인만,
+--         관리자는 전부(심사용) 조회 가능.
+drop policy if exists "gym_prices_select_all" on public.gym_prices;
+create policy "gym_prices_select_approved_or_own_or_admin" on public.gym_prices
+  for select
+  using (
+    status = 'approved'
+    or auth.uid() = user_id
+    or public.is_admin()
+  );
+
+-- INSERT: 본인 명의로만 등록 가능 (컬럼 권한으로 status는 직접 못 넣게 막아 항상
+-- 기본값 'pending'으로 시작하게 한다 — 아래 grant insert 참고)
 create policy "gym_prices_insert_auth"  on public.gym_prices for insert to authenticated
   with check (auth.uid() = user_id);
-create policy "gym_prices_update_owner" on public.gym_prices for update to authenticated
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- UPDATE: 본인 또는 관리자만. "본인은 가격만/관리자는 status만" 세부 규칙은
+-- 아래 enforce_gym_price_update_rules 트리거가 강제한다.
+drop policy if exists "gym_prices_update_owner" on public.gym_prices;
+create policy "gym_prices_update_owner_or_admin" on public.gym_prices for update to authenticated
+  using (auth.uid() = user_id or public.is_admin())
+  with check (auth.uid() = user_id or public.is_admin());
+
 create policy "gym_prices_delete_owner" on public.gym_prices for delete to authenticated
   using (auth.uid() = user_id);
 
--- ⚠️ RLS의 update 정책은 "이 행이 내 것인가"만 검사할 뿐, 수정 요청으로 gym_id/user_id를
--- 다른 값으로 바꾸는 것까지는 막지 못한다(자기 행을 다른 헬스장에 재연결해 그 헬스장의
--- 최저가/평균가를 조작할 수 있음). 앱은 애초에 update 시 price_1m~12m/memo만 보내므로,
--- 컬럼 단위 권한으로 gym_id/user_id 변경 자체를 원천 차단한다.
-revoke update on public.gym_prices from authenticated;
-grant update (price_1m, price_3m, price_6m, price_12m, memo)
+-- ⚠️ RLS의 update/insert 정책은 "이 행이 내 것인가"만 검사할 뿐, 요청으로 gym_id/user_id를
+-- 다른 값으로 바꾸거나 status를 직접 'approved'로 넣는 것까지는 막지 못한다. 컬럼 단위
+-- 권한으로 gym_id/user_id는 애초에 수정 대상에서 제외하고, status는 INSERT 시 지정할 수
+-- 없게(항상 DB 기본값 'pending') 막는다.
+revoke insert on public.gym_prices from authenticated;
+grant insert (gym_id, user_id, price_1m, price_3m, price_6m, price_12m, memo)
   on public.gym_prices to authenticated;
+
+revoke update on public.gym_prices from authenticated;
+grant update (price_1m, price_3m, price_6m, price_12m, memo, status)
+  on public.gym_prices to authenticated;
+
+-- status 컬럼 UPDATE 권한은 위에서 열어줬지만, "일반 유저는 status를 못 바꾸고
+-- 관리자는 가격 값을 못 바꾼다"는 실제 강제는 컬럼 권한만으로는 표현할 수 없어
+-- (권한은 역할 단위지 값 단위가 아님) 트리거로 처리한다.
+create or replace function public.enforce_gym_price_update_rules()
+returns trigger
+language plpgsql
+as $$
+begin
+  if public.is_admin() then
+    -- 관리자는 심사(status)만 바꿀 수 있다. 가격 값/메모는 못 바꾸게 원래 값으로 되돌린다.
+    new.price_1m := old.price_1m;
+    new.price_3m := old.price_3m;
+    new.price_6m := old.price_6m;
+    new.price_12m := old.price_12m;
+    new.memo := old.memo;
+  else
+    -- 일반 유저(작성자)는 status를 직접 바꿀 수 없다.
+    new.status := old.status;
+    if (new.price_1m is distinct from old.price_1m
+        or new.price_3m is distinct from old.price_3m
+        or new.price_6m is distinct from old.price_6m
+        or new.price_12m is distinct from old.price_12m) then
+      -- 가격 값을 수정하면 다시 심사받도록 pending으로 되돌린다.
+      new.status := 'pending';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_gym_price_update on public.gym_prices;
+create trigger on_gym_price_update
+  before update on public.gym_prices
+  for each row execute function public.enforce_gym_price_update_rules();
 
 -- gym_details (한 헬스장당 1건 — 로그인 유저 누구나 추가/수정 가능한 크라우드소싱 정보)
 create policy "gym_details_select_all"  on public.gym_details for select using (true);
