@@ -1,8 +1,13 @@
-import { act, renderHook } from "@testing-library/react-native";
-import { updateInterestRegion, updateUserLocation } from "../../lib/api/auth";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
+import { updateUserLocation } from "../../lib/api/auth";
+import {
+  addInterestRegion,
+  getInterestRegions,
+  removeInterestRegion,
+} from "../../lib/api/interestRegions";
 import { useAuthStore } from "../../store/authStore";
-import type { User } from "../../types";
-import { useInterestRegion, useSyncUserLocation } from "./hooks";
+import type { InterestRegion, User } from "../../types";
+import { useInterestRegions, useSyncUserLocation } from "./hooks";
 
 // api 모듈을 목으로 대체 (실제 supabase 로드 방지)
 jest.mock("../../lib/api/auth", () => ({
@@ -10,20 +15,29 @@ jest.mock("../../lib/api/auth", () => ({
   signInWithOAuth: jest.fn(),
   signUpWithEmail: jest.fn(),
   updateUserLocation: jest.fn().mockResolvedValue(undefined),
-  updateInterestRegion: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("../../lib/api/interestRegions", () => ({
+  getInterestRegions: jest.fn().mockResolvedValue([]),
+  addInterestRegion: jest.fn(),
+  removeInterestRegion: jest.fn().mockResolvedValue(undefined),
 }));
 
 const updateUserLocationMock = updateUserLocation as jest.Mock;
-const updateInterestRegionMock = updateInterestRegion as jest.Mock;
+const getInterestRegionsMock = getInterestRegions as jest.Mock;
+const addInterestRegionMock = addInterestRegion as jest.Mock;
+const removeInterestRegionMock = removeInterestRegion as jest.Mock;
 
 const USER: User = {
   uid: "user-1",
   email: "tester@example.com",
   nickname: "테스터",
-  interest_sido: null,
-  interest_sigungu: null,
   created_at: "2026-01-01T00:00:00Z",
 };
+
+function makeRegion(sido: string, sigungu: string, id = `${sido}-${sigungu}`): InterestRegion {
+  return { id, user_id: "user-1", sido, sigungu, created_at: "2026-01-01T00:00:00Z" };
+}
 
 interface SyncProps {
   coords: { lat: number; lng: number };
@@ -98,63 +112,84 @@ describe("useSyncUserLocation", () => {
   });
 });
 
-describe("useInterestRegion", () => {
+describe("useInterestRegions", () => {
   beforeEach(() => {
-    updateInterestRegionMock.mockClear();
+    getInterestRegionsMock.mockReset().mockResolvedValue([]);
+    addInterestRegionMock.mockReset();
+    removeInterestRegionMock.mockReset().mockResolvedValue(undefined);
     useAuthStore.setState({ user: USER });
   });
 
-  it("현재 유저의 관심 지역을 반환한다", async () => {
-    useAuthStore.setState({
-      user: { ...USER, interest_sido: "서울특별시", interest_sigungu: "강남구" },
-    });
+  it("로그인 유저의 관심 지역 목록을 불러온다", async () => {
+    getInterestRegionsMock.mockResolvedValue([makeRegion("서울특별시", "강남구")]);
 
-    const { result } = await renderHook(() => useInterestRegion());
+    const { result } = await renderHook(() => useInterestRegions());
 
-    expect(result.current.sido).toBe("서울특별시");
-    expect(result.current.sigungu).toBe("강남구");
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.regions).toEqual([makeRegion("서울특별시", "강남구")]);
   });
 
-  it("save 호출 시 API를 호출하고 authStore의 유저 정보를 갱신한다", async () => {
-    const { result } = await renderHook(() => useInterestRegion());
+  it("add 호출 시 API를 호출하고 목록에 추가한다", async () => {
+    const newRegion = makeRegion("서울특별시", "강남구");
+    addInterestRegionMock.mockResolvedValue(newRegion);
+
+    const { result } = await renderHook(() => useInterestRegions());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      await result.current.save("서울특별시", "강남구");
+      await result.current.add("서울특별시", "강남구");
     });
 
-    expect(updateInterestRegionMock).toHaveBeenCalledWith(
-      "user-1",
-      "서울특별시",
-      "강남구"
-    );
-    expect(useAuthStore.getState().user?.interest_sido).toBe("서울특별시");
-    expect(useAuthStore.getState().user?.interest_sigungu).toBe("강남구");
+    expect(addInterestRegionMock).toHaveBeenCalledWith("user-1", "서울특별시", "강남구");
+    expect(result.current.regions).toEqual([newRegion]);
   });
 
-  it("clear 호출 시 관심 지역을 null로 저장한다", async () => {
-    useAuthStore.setState({
-      user: { ...USER, interest_sido: "서울특별시", interest_sigungu: "강남구" },
-    });
+  it("이미 5개면 API를 호출하지 않고 에러를 낸다", async () => {
+    getInterestRegionsMock.mockResolvedValue([
+      makeRegion("a", "1"),
+      makeRegion("a", "2"),
+      makeRegion("a", "3"),
+      makeRegion("a", "4"),
+      makeRegion("a", "5"),
+    ]);
 
-    const { result } = await renderHook(() => useInterestRegion());
+    const { result } = await renderHook(() => useInterestRegions());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      await result.current.clear();
+      await result.current.add("서울특별시", "강남구");
     });
 
-    expect(updateInterestRegionMock).toHaveBeenCalledWith("user-1", null, null);
-    expect(useAuthStore.getState().user?.interest_sido).toBeNull();
+    expect(addInterestRegionMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("관심 지역은 최대 5개까지 설정할 수 있어요.");
   });
 
-  it("API 실패 시 에러 메시지를 노출한다", async () => {
-    updateInterestRegionMock.mockRejectedValueOnce(new Error("저장 실패"));
+  it("이미 추가된 지역이면 API를 호출하지 않는다", async () => {
+    getInterestRegionsMock.mockResolvedValue([makeRegion("서울특별시", "강남구")]);
 
-    const { result } = await renderHook(() => useInterestRegion());
+    const { result } = await renderHook(() => useInterestRegions());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      await result.current.save("서울특별시", "강남구");
+      await result.current.add("서울특별시", "강남구");
     });
 
-    expect(result.current.error).toBe("저장 실패");
+    expect(addInterestRegionMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("이미 추가된 지역이에요.");
+  });
+
+  it("remove 호출 시 API를 호출하고 목록에서 제거한다", async () => {
+    const region = makeRegion("서울특별시", "강남구", "region-1");
+    getInterestRegionsMock.mockResolvedValue([region]);
+
+    const { result } = await renderHook(() => useInterestRegions());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.remove("region-1");
+    });
+
+    expect(removeInterestRegionMock).toHaveBeenCalledWith("region-1");
+    expect(result.current.regions).toEqual([]);
   });
 });

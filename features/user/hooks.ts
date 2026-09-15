@@ -3,11 +3,18 @@ import {
   signInWithEmail,
   signInWithOAuth,
   signUpWithEmail,
-  updateInterestRegion,
   updateUserLocation,
 } from "../../lib/api/auth";
+import {
+  addInterestRegion,
+  getInterestRegions,
+  removeInterestRegion,
+} from "../../lib/api/interestRegions";
 import { useAuthStore } from "../../store/authStore";
-import type { User } from "../../types";
+import type { InterestRegion, User } from "../../types";
+
+/** 유저당 최대 관심 지역 개수 (DB 트리거의 제한과 동일하게 맞춰 클라이언트에서도 미리 막는다) */
+export const MAX_INTEREST_REGIONS = 5;
 
 interface UseAuthResult {
   isLoading: boolean;
@@ -92,45 +99,77 @@ export function useSyncUserLocation(
   }, [user, isLocating, coords.lat, coords.lng]);
 }
 
-interface UseInterestRegionResult {
-  sido: string | null;
-  sigungu: string | null;
+interface UseInterestRegionsResult {
+  regions: InterestRegion[];
+  isLoading: boolean;
   isSaving: boolean;
   error: string | null;
-  save: (sido: string, sigungu: string) => Promise<void>;
-  clear: () => Promise<void>;
+  add: (sido: string, sigungu: string) => Promise<void>;
+  remove: (regionId: string) => Promise<void>;
 }
 
 /**
- * 관심 지역(시/도, 시/군/구) 설정 훅
- * - 현재 값은 로그인 유저 정보에서 읽고, 저장/해제는 API 호출 후 authStore에 반영한다.
+ * 관심 지역(시/도 + 시/군/구) 목록 훅 — 최대 MAX_INTEREST_REGIONS개까지.
+ * - 로그인 유저 기준으로 목록을 불러오고, 추가/삭제 후 로컬 상태를 갱신한다.
+ * - 개수 제한은 DB 트리거가 최종 방어선이지만, 왕복 없이 바로 알려주기 위해
+ *   여기서도 먼저 검사한다.
  */
-export function useInterestRegion(): UseInterestRegionResult {
+export function useInterestRegions(): UseInterestRegionsResult {
   const user = useAuthStore((state) => state.user);
-  const setUser = useAuthStore((state) => state.setUser);
+  const [regions, setRegions] = useState<InterestRegion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function apply(sido: string | null, sigungu: string | null): Promise<void> {
+  useEffect(() => {
+    if (!user) {
+      setRegions([]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    getInterestRegions(user.uid)
+      .then(setRegions)
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "관심 지역을 불러오지 못했습니다.");
+      })
+      .finally(() => setIsLoading(false));
+  }, [user]);
+
+  async function add(sido: string, sigungu: string): Promise<void> {
     if (!user) return;
+    if (regions.length >= MAX_INTEREST_REGIONS) {
+      setError(`관심 지역은 최대 ${MAX_INTEREST_REGIONS}개까지 설정할 수 있어요.`);
+      return;
+    }
+    if (regions.some((r) => r.sido === sido && r.sigungu === sigungu)) {
+      setError("이미 추가된 지역이에요.");
+      return;
+    }
     setIsSaving(true);
     setError(null);
     try {
-      await updateInterestRegion(user.uid, sido, sigungu);
-      setUser({ ...user, interest_sido: sido, interest_sigungu: sigungu });
+      const region = await addInterestRegion(user.uid, sido, sigungu);
+      setRegions((prev) => [...prev, region]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "관심 지역 저장에 실패했습니다.");
+      setError(e instanceof Error ? e.message : "관심 지역 추가에 실패했습니다.");
     } finally {
       setIsSaving(false);
     }
   }
 
-  return {
-    sido: user?.interest_sido ?? null,
-    sigungu: user?.interest_sigungu ?? null,
-    isSaving,
-    error,
-    save: (sido, sigungu) => apply(sido, sigungu),
-    clear: () => apply(null, null),
-  };
+  async function remove(regionId: string): Promise<void> {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await removeInterestRegion(regionId);
+      setRegions((prev) => prev.filter((r) => r.id !== regionId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "관심 지역 삭제에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return { regions, isLoading, isSaving, error, add, remove };
 }

@@ -1,19 +1,23 @@
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../constants/colors";
 import { fontSize, spacing } from "../constants/layout";
 import { REGIONS } from "../constants/regions";
+import { InterestRegionListView } from "../features/user/components/InterestRegionListView";
 import { RegionList } from "../features/user/components/RegionList";
-import { useInterestRegion } from "../features/user/hooks";
+import { MAX_INTEREST_REGIONS, useInterestRegions } from "../features/user/hooks";
+
+type Step = "list" | "sido" | "sigungu";
 
 /**
- * 관심 지역 설정 화면 — 시/도 선택 → 시/군/구 선택 2단계.
- * - 실제 저장/해제 로직은 useInterestRegion 훅에 위임한다.
+ * 관심 지역 설정 화면 (최대 5개)
+ * - list: 이미 추가한 지역 목록 + 추가/삭제
+ * - sido → sigungu: 새 지역 추가를 위한 2단계 선택
+ * - 실제 조회/추가/삭제 로직은 useInterestRegions 훅에 위임한다.
  */
 export default function InterestRegionScreen() {
-  const router = useRouter();
-  const { sido, sigungu, isSaving, error, save, clear } = useInterestRegion();
+  const { regions, isLoading, isSaving, error, add, remove } = useInterestRegions();
+  const [step, setStep] = useState<Step>("list");
   const [pendingSido, setPendingSido] = useState<string | null>(null);
 
   const currentGroup = pendingSido
@@ -22,44 +26,53 @@ export default function InterestRegionScreen() {
 
   async function handleSelectSigungu(value: string) {
     if (!pendingSido) return;
-    await save(pendingSido, value);
-    router.back();
+    await add(pendingSido, value);
+    setStep("list");
+    setPendingSido(null);
   }
 
-  async function handleClear() {
-    await clear();
-    router.back();
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
   }
 
   return (
     <View style={styles.container}>
-      {currentGroup ? (
+      {step === "sigungu" && currentGroup ? (
         <>
-          <Pressable onPress={() => setPendingSido(null)} style={styles.backRow}>
-            <Text style={styles.backText}>‹ {currentGroup.sido} 다시 선택</Text>
+          <Pressable onPress={() => setStep("sido")} style={styles.backRow}>
+            <Text style={styles.backText}>‹ 시/도 다시 선택</Text>
           </Pressable>
           <RegionList
             items={currentGroup.sigungu}
-            selected={pendingSido === sido ? sigungu : null}
+            selected={null}
             onSelect={handleSelectSigungu}
           />
         </>
-      ) : (
+      ) : step === "sido" ? (
         <>
-          <Text style={styles.guide}>
-            관심 지역을 설정하면 해당 지역 위주로 정보를 보여드려요.
-          </Text>
-          {sido ? (
-            <Pressable onPress={handleClear} style={styles.clearRow}>
-              <Text style={styles.clearText}>관심 지역 해제 (전체 보기)</Text>
-            </Pressable>
-          ) : null}
+          <Pressable onPress={() => setStep("list")} style={styles.backRow}>
+            <Text style={styles.backText}>‹ 목록으로</Text>
+          </Pressable>
           <RegionList
             items={REGIONS.map((group) => group.sido)}
-            selected={sido}
-            onSelect={setPendingSido}
+            selected={pendingSido}
+            onSelect={(sido) => {
+              setPendingSido(sido);
+              setStep("sigungu");
+            }}
           />
         </>
+      ) : (
+        <InterestRegionListView
+          regions={regions}
+          maxCount={MAX_INTEREST_REGIONS}
+          onAdd={() => setStep("sido")}
+          onRemove={remove}
+        />
       )}
 
       {isSaving ? (
@@ -77,10 +90,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  guide: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    padding: spacing.lg,
+  center: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   backRow: {
     paddingVertical: spacing.md,
@@ -89,15 +101,6 @@ const styles = StyleSheet.create({
   backText: {
     fontSize: fontSize.md,
     color: colors.primary,
-    fontWeight: "600",
-  },
-  clearRow: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  clearText: {
-    fontSize: fontSize.sm,
-    color: colors.error,
     fontWeight: "600",
   },
   overlay: {

@@ -23,8 +23,6 @@ const MOCK_USER: User = {
   uid: "user-1",
   email: "tester@example.com",
   nickname: "테스터",
-  interest_sido: null,
-  interest_sigungu: null,
   created_at: "2026-01-01T00:00:00Z",
 };
 
@@ -99,8 +97,6 @@ export async function signUpWithEmail(
       uid: data.user.id,
       email,
       nickname,
-      interest_sido: null,
-      interest_sigungu: null,
       created_at: data.user.created_at,
     }
   );
@@ -155,21 +151,6 @@ export async function updateUserLocation(
   const { error } = await supabase
     .from("users")
     .update({ home_lat: lat, home_lng: lng })
-    .eq("uid", userId);
-  if (error) throw new Error(error.message);
-}
-
-/** 관심 지역(시/도, 시/군/구) 저장 — null을 넘기면 해제(전체 지역 보기)로 처리 */
-export async function updateInterestRegion(
-  userId: string,
-  sido: string | null,
-  sigungu: string | null
-): Promise<void> {
-  if (USE_MOCK) return;
-
-  const { error } = await supabase
-    .from("users")
-    .update({ interest_sido: sido, interest_sigungu: sigungu })
     .eq("uid", userId);
   if (error) throw new Error(error.message);
 }

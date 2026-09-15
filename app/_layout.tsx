@@ -1,10 +1,17 @@
 import { Stack, useRouter, useSegments } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useTrackAppOpen } from "../features/analytics/hooks";
 import { usePushRegistration } from "../features/notifications/hooks";
 import { useAuthStore } from "../store/authStore";
 import { useOnboardingStore } from "../store/onboardingStore";
+
+// 세션 복구·온보딩 여부 확인이 끝나기 전까지 네이티브 스플래시를 계속 띄워둔다
+// (아래에서 확인이 끝나는 시점에 직접 hideAsync를 호출한다).
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // 이미 자동으로 숨겨졌거나 지원하지 않는 환경이어도 앱 진입에는 지장 없다.
+});
 
 /**
  * 루트 레이아웃 (Expo Router)
@@ -30,6 +37,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!isInitialized || hasSeen === null) return;
+    SplashScreen.hideAsync().catch(() => {
+      // 스플래시 숨기기 실패는 무시(이미 숨겨진 경우 등)
+    });
     const seg0 = segments[0];
     const inAuthGroup = seg0 === "(auth)";
 

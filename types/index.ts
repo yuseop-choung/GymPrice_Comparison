@@ -9,8 +9,18 @@ export interface User {
   uid: string;
   email: string;
   nickname: string;
-  interest_sido: string | null; // 관심 지역 시/도 (예: "서울특별시")
-  interest_sigungu: string | null; // 관심 지역 시/군/구 (예: "강남구")
+  created_at: string;
+}
+
+/**
+ * 관심 지역 (시/도 + 시/군/구, 구 단위까지). 유저당 최대 5개까지 등록 가능.
+ * 관심 지역 안의 헬스장에 새 최저가가 등록되면 알림을 받는다.
+ */
+export interface InterestRegion {
+  id: string;
+  user_id: string;
+  sido: string;
+  sigungu: string;
   created_at: string;
 }
 
