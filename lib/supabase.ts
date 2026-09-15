@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
+import { AppState } from "react-native";
 
 /**
  * Supabase 클라이언트 초기화
@@ -27,4 +28,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true, // 세션 유지 (앱 재실행 시 로그인 유지)
     detectSessionInUrl: false, // RN에는 URL 세션 감지가 불필요
   },
+});
+
+// ⚠️ RN에서는 앱이 백그라운드로 가면 JS 타이머가 멈춰 autoRefreshToken의 갱신
+// 주기가 함께 멈출 수 있다. 앱이 다시 포그라운드로 돌아왔을 때 세션이 만료된
+// 채로 방치되지 않도록, Supabase가 공식적으로 권장하는 AppState 연동으로
+// 포그라운드에서만 자동 갱신을 돌리고 백그라운드에서는 멈춘다.
+AppState.addEventListener("change", (state) => {
+  if (state === "active") {
+    supabase.auth.startAutoRefresh();
+  } else {
+    supabase.auth.stopAutoRefresh();
+  }
 });

@@ -67,6 +67,10 @@ export default function RootLayout() {
           name="gym/[id]/detail-edit"
           options={{ title: "부가정보 수정" }}
         />
+        <Stack.Screen
+          name="interest-region"
+          options={{ title: "관심 지역 설정" }}
+        />
       </Stack>
     </SafeAreaProvider>
   );

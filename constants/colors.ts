@@ -12,6 +12,7 @@ export const colors = {
   error: "#DC2626", // 에러
   white: "#FFFFFF",
   disabled: "#9CA3AF", // 비활성
+  overlay: "rgba(255, 255, 255, 0.6)", // 로딩 중 화면 위 반투명 오버레이
   // SNS 브랜드 색상
   naver: "#03C75A", // 네이버 그린
   googleBorder: "#DADCE0", // 구글 버튼 테두리

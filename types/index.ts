@@ -9,6 +9,8 @@ export interface User {
   uid: string;
   email: string;
   nickname: string;
+  interest_sido: string | null; // 관심 지역 시/도 (예: "서울특별시")
+  interest_sigungu: string | null; // 관심 지역 시/군/구 (예: "강남구")
   created_at: string;
 }
 

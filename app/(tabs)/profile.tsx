@@ -1,9 +1,16 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Button } from "../../components/ui/Button";
 import { colors } from "../../constants/colors";
-import { fontSize, spacing } from "../../constants/layout";
+import { fontSize, radius, spacing } from "../../constants/layout";
 import { useNotifications } from "../../features/notifications/hooks";
 import { useMyPrices } from "../../features/price/hooks";
 import { MyPriceCard } from "../../features/user/components/MyPriceCard";
@@ -45,6 +52,17 @@ export default function ProfileScreen() {
           <View style={styles.header}>
             <Text style={styles.nickname}>{user?.nickname ?? "게스트"}</Text>
             <Text style={styles.email}>{user?.email ?? ""}</Text>
+            <Pressable
+              style={styles.regionRow}
+              onPress={() => router.push("/interest-region")}
+            >
+              <Text style={styles.regionLabel}>관심 지역</Text>
+              <Text style={styles.regionValue}>
+                {user?.interest_sido
+                  ? `${user.interest_sido} ${user.interest_sigungu}`
+                  : "설정 안 함"}
+              </Text>
+            </Pressable>
             <View style={styles.action}>
               <Button title="테스트 알림 보내기" onPress={sendTest} />
             </View>
@@ -88,6 +106,25 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  regionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+  },
+  regionLabel: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    fontWeight: "600",
+  },
+  regionValue: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
   },
   action: {
     marginTop: spacing.md,
