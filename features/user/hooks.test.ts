@@ -1,8 +1,8 @@
-import { renderHook } from "@testing-library/react-native";
-import { updateUserLocation } from "../../lib/api/auth";
+import { act, renderHook } from "@testing-library/react-native";
+import { updateInterestRegion, updateUserLocation } from "../../lib/api/auth";
 import { useAuthStore } from "../../store/authStore";
 import type { User } from "../../types";
-import { useSyncUserLocation } from "./hooks";
+import { useInterestRegion, useSyncUserLocation } from "./hooks";
 
 // api 모듈을 목으로 대체 (실제 supabase 로드 방지)
 jest.mock("../../lib/api/auth", () => ({
@@ -10,14 +10,18 @@ jest.mock("../../lib/api/auth", () => ({
   signInWithOAuth: jest.fn(),
   signUpWithEmail: jest.fn(),
   updateUserLocation: jest.fn().mockResolvedValue(undefined),
+  updateInterestRegion: jest.fn().mockResolvedValue(undefined),
 }));
 
 const updateUserLocationMock = updateUserLocation as jest.Mock;
+const updateInterestRegionMock = updateInterestRegion as jest.Mock;
 
 const USER: User = {
   uid: "user-1",
   email: "tester@example.com",
   nickname: "테스터",
+  interest_sido: null,
+  interest_sigungu: null,
   created_at: "2026-01-01T00:00:00Z",
 };
 
@@ -91,5 +95,66 @@ describe("useSyncUserLocation", () => {
     );
 
     expect(updateUserLocationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("useInterestRegion", () => {
+  beforeEach(() => {
+    updateInterestRegionMock.mockClear();
+    useAuthStore.setState({ user: USER });
+  });
+
+  it("현재 유저의 관심 지역을 반환한다", async () => {
+    useAuthStore.setState({
+      user: { ...USER, interest_sido: "서울특별시", interest_sigungu: "강남구" },
+    });
+
+    const { result } = await renderHook(() => useInterestRegion());
+
+    expect(result.current.sido).toBe("서울특별시");
+    expect(result.current.sigungu).toBe("강남구");
+  });
+
+  it("save 호출 시 API를 호출하고 authStore의 유저 정보를 갱신한다", async () => {
+    const { result } = await renderHook(() => useInterestRegion());
+
+    await act(async () => {
+      await result.current.save("서울특별시", "강남구");
+    });
+
+    expect(updateInterestRegionMock).toHaveBeenCalledWith(
+      "user-1",
+      "서울특별시",
+      "강남구"
+    );
+    expect(useAuthStore.getState().user?.interest_sido).toBe("서울특별시");
+    expect(useAuthStore.getState().user?.interest_sigungu).toBe("강남구");
+  });
+
+  it("clear 호출 시 관심 지역을 null로 저장한다", async () => {
+    useAuthStore.setState({
+      user: { ...USER, interest_sido: "서울특별시", interest_sigungu: "강남구" },
+    });
+
+    const { result } = await renderHook(() => useInterestRegion());
+
+    await act(async () => {
+      await result.current.clear();
+    });
+
+    expect(updateInterestRegionMock).toHaveBeenCalledWith("user-1", null, null);
+    expect(useAuthStore.getState().user?.interest_sido).toBeNull();
+  });
+
+  it("API 실패 시 에러 메시지를 노출한다", async () => {
+    updateInterestRegionMock.mockRejectedValueOnce(new Error("저장 실패"));
+
+    const { result } = await renderHook(() => useInterestRegion());
+
+    await act(async () => {
+      await result.current.save("서울특별시", "강남구");
+    });
+
+    expect(result.current.error).toBe("저장 실패");
   });
 });

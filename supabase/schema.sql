@@ -7,17 +7,21 @@
 -- 1) 테이블
 -- ----------------------------------------------------------------
 create table if not exists public.users (
-  uid        uuid        primary key references auth.users(id) on delete cascade,
-  email      text        not null,
-  nickname   text        not null,
-  home_lat   double precision, -- 내 동네 위도 (위치기반 알림용)
-  home_lng   double precision, -- 내 동네 경도
-  created_at timestamptz not null default now()
+  uid              uuid        primary key references auth.users(id) on delete cascade,
+  email            text        not null,
+  nickname         text        not null,
+  home_lat         double precision, -- 내 동네 위도 (위치기반 알림용)
+  home_lng         double precision, -- 내 동네 경도
+  interest_sido    text, -- 관심 지역 시/도 (예: "서울특별시")
+  interest_sigungu text, -- 관심 지역 시/군/구 (예: "강남구")
+  created_at       timestamptz not null default now()
 );
 
 -- 이미 만들어진 users 테이블에도 컬럼 추가
 alter table public.users add column if not exists home_lat double precision;
 alter table public.users add column if not exists home_lng double precision;
+alter table public.users add column if not exists interest_sido text;
+alter table public.users add column if not exists interest_sigungu text;
 -- 관리자 여부 (가격 심사 등 관리자 전용 기능에 사용). 앱에는 관리자 지정 UI가 없으므로
 -- 최초 관리자는 SQL Editor에서 직접 켜야 한다:
 --   update public.users set is_admin = true where email = '본인 이메일';
@@ -193,8 +197,8 @@ drop policy if exists "users_update_self" on public.users;
 create policy "users_update_self" on public.users for update to authenticated
   using (auth.uid() = uid) with check (auth.uid() = uid);
 -- 관리자는 다른 유저의 관리자 권한을 부여/해제할 수 있어야 한다(관리자 페이지의
--- "유저 관리" 기능). is_admin 외 다른 필드(닉네임/이메일/위치)는 아래 트리거가
--- 관리자가 "타인의" 행을 건드릴 때만 원래 값으로 되돌려 막는다.
+-- "유저 관리" 기능). is_admin 외 다른 필드(닉네임/이메일/위치/관심 지역)는 아래
+-- 트리거가 관리자가 "타인의" 행을 건드릴 때만 원래 값으로 되돌려 막는다.
 drop policy if exists "users_update_admin" on public.users;
 create policy "users_update_admin" on public.users for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -221,6 +225,8 @@ begin
     new.nickname := old.nickname;
     new.home_lat := old.home_lat;
     new.home_lng := old.home_lng;
+    new.interest_sido := old.interest_sido;
+    new.interest_sigungu := old.interest_sigungu;
   else
     new.is_admin := old.is_admin;
     new.is_suspended := old.is_suspended;
