@@ -36,8 +36,8 @@ export function GymCard({ gym, onPress }: GymCardProps) {
       <View style={styles.priceRow}>
         {gym.lowest_price_1m !== null ? (
           <>
-            <Text style={styles.priceLabel}>1개월 최저</Text>
-            <Text style={styles.price}>{formatPrice(gym.lowest_price_1m)}</Text>
+            <Text style={styles.priceLabel}>최저가</Text>
+            <Text style={styles.price}>{formatPrice(gym.lowest_price_1m)}/월</Text>
           </>
         ) : (
           <Text style={styles.noPrice}>가격 정보 없음</Text>

@@ -5,24 +5,34 @@ import type { ColorTheme } from "../../../constants/colors";
 import { KAKAO_JS_KEY } from "../../../constants/config";
 import { fontSize } from "../../../constants/layout";
 import { useThemeColors } from "../../../hooks/useThemeColors";
-import { buildHtml, type MapMarker } from "./kakaoMapHtml";
+import { buildHtml, parseMapMessage, type MapBounds, type MapMarker } from "./kakaoMapHtml";
 
 interface KakaoMapProps {
   center: { lat: number; lng: number };
   markers: MapMarker[];
   /** 마커를 누르면 해당 헬스장 id 전달 */
   onMarkerPress?: (id: string) => void;
+  /** 지도를 움직이거나 확대/축소해서 보이는 영역이 바뀔 때(최초 로드 포함) 전달 */
+  onBoundsChange?: (bounds: MapBounds) => void;
 }
 
 /**
  * 카카오맵 (WebView + Kakao Maps JS SDK)
  * - KAKAO_JS_KEY가 없으면 안내 문구를 보여준다.
- * - 마커 클릭 시 WebView → RN 으로 헬스장 id를 postMessage 한다.
+ * - 마커 클릭/지도 영역 변경을 WebView → RN으로 postMessage 한다(parseMapMessage로 해석).
  * - HTML 생성(buildHtml)은 UI 렌더링과 무관한 순수 함수라 kakaoMapHtml.ts로 분리했다.
+ * - ⚠️ WebView의 source는 center/markers/theme이 실제로 바뀔 때만 새로 계산해야
+ *   한다(useMemo) — 그렇지 않으면 onBoundsChange로 부모가 다시 렌더링될 때마다
+ *   매번 새 html 문자열이 만들어져 지도가 계속 리로드되며 사용자가 움직인 위치가
+ *   초기 위치로 되돌아가버린다.
  */
-export function KakaoMap({ center, markers, onMarkerPress }: KakaoMapProps) {
+export function KakaoMap({ center, markers, onMarkerPress, onBoundsChange }: KakaoMapProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const source = useMemo(
+    () => ({ html: buildHtml(center, markers, colors), baseUrl: "https://localhost" }),
+    [center.lat, center.lng, markers, colors]
+  );
 
   if (!KAKAO_JS_KEY) {
     return (
@@ -38,8 +48,13 @@ export function KakaoMap({ center, markers, onMarkerPress }: KakaoMapProps) {
     <WebView
       style={styles.web}
       originWhitelist={["*"]}
-      source={{ html: buildHtml(center, markers, colors), baseUrl: "https://localhost" }}
-      onMessage={(event) => onMarkerPress?.(event.nativeEvent.data)}
+      source={source}
+      onMessage={(event) => {
+        const message = parseMapMessage(event.nativeEvent.data);
+        if (!message) return;
+        if (message.type === "marker") onMarkerPress?.(message.id);
+        else onBoundsChange?.(message);
+      }}
     />
   );
 }
