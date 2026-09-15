@@ -1,0 +1,47 @@
+{
+  "version": "5",
+  "redirects": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.116.0"
+  },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.116.0": "a38014743786a06c7dbf095a99e9ef3b38c0ec16bff076fc7cd403991192b34e"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@expo/vector-icons@^15.0.2",
+        "npm:@react-native-async-storage/async-storage@2.2.0",
+        "npm:@supabase/supabase-js@^2.108.2",
+        "npm:@testing-library/react-native@14",
+        "npm:@types/jest@29.5.14",
+        "npm:@types/react@~19.1.10",
+        "npm:babel-preset-expo@~54.0.10",
+        "npm:eslint-config-expo@10.0",
+        "npm:eslint@^9.39.5",
+        "npm:expo-auth-session@~7.0.11",
+        "npm:expo-constants@~18.0.13",
+        "npm:expo-device@~8.0.10",
+        "npm:expo-font@~14.0.12",
+        "npm:expo-linking@~8.0.12",
+        "npm:expo-location@~19.0.8",
+        "npm:expo-notifications@~0.32.17",
+        "npm:expo-router@~6.0.24",
+        "npm:expo-splash-screen@~31.0.13",
+        "npm:expo-status-bar@~3.0.9",
+        "npm:expo-web-browser@~15.0.11",
+        "npm:expo@~54.0.35",
+        "npm:jest-expo@~54.0.17",
+        "npm:jest@^29.7.0",
+        "npm:react-dom@19.1.0",
+        "npm:react-native-safe-area-context@5.6",
+        "npm:react-native-screens@4.16",
+        "npm:react-native-web@~0.21.2",
+        "npm:react-native-webview@13.15.0",
+        "npm:react-native@0.81.5",
+        "npm:react@19.1.0",
+        "npm:typescript@~5.9.2",
+        "npm:zustand@^5.0.14"
+      ]
+    }
+  }
+}

@@ -59,7 +59,22 @@ export interface PriceStat {
   label: string; // 예: "1개월", "PT 10회"
   min: number; // 최저가
   avg: number; // 평균가
+  /**
+   * 중앙값. 평균은 극단적으로 비싸거나(허위 제보 등) 싼 값 하나에도 크게 흔들릴
+   * 수 있어, 참고용으로 함께 제공한다. 기존 avg를 대체하지 않고 추가 정보로만
+   * 노출한다(정책 변경이 아니라 참고 지표 추가).
+   */
+  median: number;
   count: number; // 제보 수
+}
+
+/** 숫자 배열의 중앙값 (짝수 개면 가운데 두 값의 평균, 반올림) */
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    : sorted[mid];
 }
 
 /** 정렬 우선순위: 기본 4항목(1/3/6/12개월)을 먼저, 그 외 커스텀 라벨은 뒤에 이름순 */
@@ -104,6 +119,7 @@ export function summarizePrices(prices: GymPrice[]): PriceStat[] {
         label,
         min: Math.min(...values),
         avg: Math.round(sum / values.length),
+        median: median(values),
         count: values.length,
       };
     })
@@ -123,4 +139,21 @@ export function formatPrice(value: number | null): string {
   if (value === null) return "-";
   const withComma = value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${withComma}원`;
+}
+
+/**
+ * 등록된 지 이 기간(일)이 지나면 "오래된 가격일 수 있음"으로 표시한다.
+ * - 헬스장 가격은 시간이 지나면 실제로 바뀌었을 가능성이 있는데, 최저가/평균가
+ *   계산 자체는 여전히 (재검증 없이도) 등록 당시 값을 그대로 쓴다 — 통계 로직을
+ *   바꾸는 대신, 오래된 값임을 사용자에게 알려주는 쪽을 택했다(제품 정책을
+ *   임의로 바꾸지 않으면서 "오래된 가격이 최신처럼 보이는" 문제를 완화).
+ */
+export const STALE_PRICE_DAYS = 180;
+
+/** created_at 기준으로 STALE_PRICE_DAYS일이 지난 "오래된" 가격인지 */
+export function isStalePrice(createdAt: string, now: Date = new Date()): boolean {
+  const createdMs = new Date(createdAt).getTime();
+  if (Number.isNaN(createdMs)) return false;
+  const diffDays = (now.getTime() - createdMs) / (1000 * 60 * 60 * 24);
+  return diffDays > STALE_PRICE_DAYS;
 }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>GymPrice Admin</title>
-<link rel="stylesheet" href="style.css?v=4" />
+<link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 
@@ -110,18 +110,26 @@
 
     var todayOpenUsers = {};
     var todayViewCount = 0;
+    var todayViewUsers = {}; // 오늘 하루 최소 1번이라도 조회한 고유 유저 (조회수와 별개 지표)
     RAW.todayEvents.forEach(function (e) {
       if (e.event_type === "app_open") todayOpenUsers[e.user_id] = true;
-      else if (e.event_type === "gym_view") todayViewCount += 1;
+      else if (e.event_type === "gym_view") {
+        todayViewCount += 1;
+        todayViewUsers[e.user_id] = true;
+      }
     });
     var todayActiveCount = Object.keys(todayOpenUsers).length;
+    var todayViewUserCount = Object.keys(todayViewUsers).length;
 
     var body = document.getElementById("dash-body");
     body.innerHTML =
       '<div class="section-title">오늘의 활동</div>' +
       '<div class="stat-grid">' +
         statTile("오늘 접속(고유 유저)", todayActiveCount) +
-        statTile("오늘 헬스장 조회수", todayViewCount) +
+        // "총 조회수"는 같은 유저가 여러 번 봐도 매번 집계되고, "조회한 유저 수"는
+        // 유저당 한 번만 센다 — 성격이 다른 지표라 둘 다 보여준다.
+        statTile("오늘 헬스장 조회수(총)", todayViewCount) +
+        statTile("오늘 헬스장 조회 유저 수", todayViewUserCount) +
       '</div>' +
 
       '<div class="section-title">핵심 지표</div>' +

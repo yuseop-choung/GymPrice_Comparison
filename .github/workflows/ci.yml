@@ -1,0 +1,52 @@
+name: CI
+
+# main/PR에 push될 때마다 typecheck/lint/test를 자동 실행한다.
+# admin/ 정적 페이지 배포(deploy-admin.yml)와는 별개의 워크플로우다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck-lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --ci
+
+  # supabase/functions는 Deno 런타임 전용이라 위 Node 기반 typecheck/lint 대상에서
+  # 제외돼 있다(tsconfig.json/eslint.config.js에도 동일하게 제외 처리됨). Deno로
+  # 별도 타입 검사를 한다 — 로컬에서 Deno 2.9.6으로 실제 통과를 확인했으므로
+  # (2026-xx-xx 기준) 필수 체크로 승격했다.
+  edge-functions-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Deno check (supabase/functions)
+        run: deno check supabase/functions/*/index.ts

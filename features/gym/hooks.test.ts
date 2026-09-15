@@ -1,0 +1,237 @@
+import { act, renderHook, waitFor } from "@testing-library/react-native";
+import { useAuthStore } from "../../store/authStore";
+import type { Gym, GymDetail, GymWithPrice, User } from "../../types";
+import { getGymDetail, getNearbyGyms, registerGym, saveGymDetail } from "./api";
+import { useEditGymDetail, useNearbyGyms, useRegisterGym } from "./hooks";
+
+// api 모듈을 목으로 대체 (실제 supabase 로드 방지)
+jest.mock("./api", () => ({
+  getGymDetail: jest.fn(),
+  saveGymDetail: jest.fn(),
+  getNearbyGyms: jest.fn(),
+  getGymWithPrices: jest.fn(),
+  registerGym: jest.fn(),
+}));
+
+// useAuthStore가 내부적으로 로드하는 lib/api/auth → lib/supabase가 테스트 환경(.env
+// 없음)에서 바로 에러를 던지므로, 이 훅들이 실제로 쓰는 export만 목으로 대체한다.
+jest.mock("../../lib/api/auth", () => ({
+  getCurrentUser: jest.fn(),
+  signOut: jest.fn(),
+}));
+
+const getGymDetailMock = getGymDetail as jest.Mock;
+const saveGymDetailMock = saveGymDetail as jest.Mock;
+const getNearbyGymsMock = getNearbyGyms as jest.Mock;
+const registerGymMock = registerGym as jest.Mock;
+
+const DETAIL: GymDetail = {
+  id: "d1",
+  gym_id: "g1",
+  equipment_brand: "테크노짐",
+  cleanliness: 5,
+  trainer_count: 3,
+  memo: "깨끗해요",
+};
+
+const SUSPENDED_USER: User = {
+  uid: "u1",
+  email: "suspended@example.com",
+  nickname: "정지유저",
+  is_admin: false,
+  is_suspended: true,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+describe("useEditGymDetail", () => {
+  beforeEach(() => {
+    getGymDetailMock.mockReset();
+    saveGymDetailMock.mockReset().mockResolvedValue(undefined);
+    useAuthStore.setState({ user: null });
+  });
+
+  it("기존 값이 있으면 그대로 initial에 반영하고 loadError는 없다", async () => {
+    getGymDetailMock.mockResolvedValue(DETAIL);
+    const onDone = jest.fn();
+
+    const { result } = await renderHook(() => useEditGymDetail("g1", onDone));
+
+    await waitFor(() =>
+      expect(result.current.initial).toEqual({
+        equipment_brand: "테크노짐",
+        cleanliness: 5,
+        trainer_count: 3,
+        memo: "깨끗해요",
+      })
+    );
+    expect(result.current.loadError).toBeNull();
+  });
+
+  it("등록된 부가정보가 없으면(null) 빈 값으로 initial을 채우고 loadError는 없다", async () => {
+    getGymDetailMock.mockResolvedValue(null);
+    const onDone = jest.fn();
+
+    const { result } = await renderHook(() => useEditGymDetail("g1", onDone));
+
+    await waitFor(() =>
+      expect(result.current.initial).toEqual({
+        equipment_brand: null,
+        cleanliness: null,
+        trainer_count: null,
+        memo: null,
+      })
+    );
+    expect(result.current.loadError).toBeNull();
+  });
+
+  it("조회 자체가 실패하면(네트워크/권한/서버 오류) initial은 null로 남고 loadError가 채워진다 " +
+    "— 실패를 빈 값으로 취급해 실제 데이터를 덮어쓰는 걸 막는다", async () => {
+    getGymDetailMock.mockRejectedValue(new Error("네트워크 오류"));
+    const onDone = jest.fn();
+
+    const { result } = await renderHook(() => useEditGymDetail("g1", onDone));
+
+    await waitFor(() => expect(result.current.loadError).toBe("네트워크 오류"));
+    expect(result.current.initial).toBeNull();
+  });
+
+  it("정지된 계정이면 저장을 시도하지 않고 안내 메시지를 낸다", async () => {
+    getGymDetailMock.mockResolvedValue(DETAIL);
+    useAuthStore.setState({ user: SUSPENDED_USER });
+    const onDone = jest.fn();
+
+    const { result } = await renderHook(() => useEditGymDetail("g1", onDone));
+    await waitFor(() => expect(result.current.initial).not.toBeNull());
+
+    await act(async () => {
+      await result.current.save({
+        equipment_brand: "새 브랜드",
+        cleanliness: 4,
+        trainer_count: 2,
+        memo: null,
+      });
+    });
+
+    expect(saveGymDetailMock).not.toHaveBeenCalled();
+    expect(result.current.error).toContain("정지된 계정");
+    expect(onDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRegisterGym", () => {
+  beforeEach(() => {
+    registerGymMock.mockReset();
+    useAuthStore.setState({ user: null });
+  });
+
+  it("이름과 위경도가 유효하면 등록하고 onSuccess를 부른다", async () => {
+    const created: Gym = {
+      id: "g1",
+      name: "강철짐",
+      address: null,
+      lat: 37.5,
+      lng: 127.0,
+      phone: null,
+      created_at: "2026-01-01T00:00:00Z",
+    };
+    registerGymMock.mockResolvedValue(created);
+    const onSuccess = jest.fn();
+
+    const { result } = await renderHook(() => useRegisterGym({ onSuccess }));
+
+    await act(async () => {
+      await result.current.submit({
+        name: "강철짐",
+        address: null,
+        lat: 37.5,
+        lng: 127.0,
+        phone: null,
+      });
+    });
+
+    expect(registerGymMock).toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalledWith(created);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("정지된 계정이면 입력이 유효해도 등록을 시도하지 않는다", async () => {
+    useAuthStore.setState({ user: SUSPENDED_USER });
+    const { result } = await renderHook(() => useRegisterGym());
+
+    await act(async () => {
+      await result.current.submit({
+        name: "강철짐",
+        address: null,
+        lat: 37.5,
+        lng: 127.0,
+        phone: null,
+      });
+    });
+
+    expect(registerGymMock).not.toHaveBeenCalled();
+    expect(result.current.error).toContain("정지된 계정");
+  });
+});
+
+function makeGym(id: string): GymWithPrice {
+  return {
+    id,
+    name: `gym-${id}`,
+    address: null,
+    lat: 37.5,
+    lng: 127.0,
+    phone: null,
+    created_at: "2026-01-01T00:00:00Z",
+    lowest_price_1m: null,
+  };
+}
+
+describe("useNearbyGyms", () => {
+  beforeEach(() => {
+    getNearbyGymsMock.mockReset().mockResolvedValue([makeGym("g1")]);
+  });
+
+  it("enabled(기본값 true)면 바로 조회한다", async () => {
+    const { result } = await renderHook(() => useNearbyGyms(37.5, 127.0, 3));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(getNearbyGymsMock).toHaveBeenCalledWith(37.5, 127.0, 3);
+    expect(result.current.gyms).toHaveLength(1);
+  });
+
+  it("enabled=false면 GPS가 아직 확정되지 않은 것으로 보고 조회하지 않는다", async () => {
+    const { result } = await renderHook(() =>
+      useNearbyGyms(37.5, 127.0, 3, false)
+    );
+
+    // enabled가 false인 동안은 로딩 상태 그대로 유지되고, API도 호출되지 않는다.
+    expect(getNearbyGymsMock).not.toHaveBeenCalled();
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it("enabled가 false에서 true로 바뀌면(GPS 확정) 그제서야 조회한다", async () => {
+    const { result, rerender } = await renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useNearbyGyms(37.5, 127.0, 3, enabled),
+      { initialProps: { enabled: false } }
+    );
+    expect(getNearbyGymsMock).not.toHaveBeenCalled();
+
+    await rerender({ enabled: true });
+
+    await waitFor(() => expect(getNearbyGymsMock).toHaveBeenCalledTimes(1));
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it("refetch()도 enabled=false인 동안은 아무 일도 하지 않는다", async () => {
+    const { result } = await renderHook(() =>
+      useNearbyGyms(37.5, 127.0, 3, false)
+    );
+
+    await act(async () => {
+      result.current.refetch();
+    });
+
+    expect(getNearbyGymsMock).not.toHaveBeenCalled();
+  });
+});

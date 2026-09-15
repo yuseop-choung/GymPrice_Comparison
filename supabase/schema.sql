@@ -102,7 +102,9 @@ create table if not exists public.gym_details (
   equipment_brand text,
   cleanliness     integer,
   trainer_count   integer,
-  memo            text
+  memo            text,
+  updated_at      timestamptz not null default now(),
+  updated_by      uuid        references public.users(uid) on delete set null
 );
 
 -- 한 헬스장당 부가정보 1건 보장 (이미 만들어진 테이블에도 적용)
@@ -115,6 +117,84 @@ begin
       add constraint gym_details_gym_id_key unique (gym_id);
   end if;
 end $$;
+
+-- 이미 만들어진 gym_details 테이블에도 컬럼 추가 (누가/언제 마지막으로 고쳤는지
+-- 최소한의 추적 — 전체 수정 이력까지는 아니지만, 악의적 덮어쓰기를 나중에
+-- 조사할 수 있는 최소 단서는 남긴다. 실제 값은 아래 트리거가 자동으로 채운다).
+alter table public.gym_details add column if not exists updated_at timestamptz not null default now();
+alter table public.gym_details add column if not exists updated_by uuid references public.users(uid) on delete set null;
+
+-- 청결도/트레이너 수는 클라이언트(hooks)에서도 검증하지만, API를 직접 호출해도
+-- 막히도록 DB에서도 동일한 범위를 강제한다 (클라이언트 검증만으로는 우회 가능).
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_details_cleanliness_range'
+  ) then
+    alter table public.gym_details
+      add constraint gym_details_cleanliness_range check (cleanliness is null or cleanliness between 1 and 5);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_details_trainer_count_range'
+  ) then
+    alter table public.gym_details
+      add constraint gym_details_trainer_count_range check (trainer_count is null or trainer_count >= 0);
+  end if;
+end $$;
+
+-- gym_details 수정 이력 (매번 바뀔 때마다 그 시점의 스냅샷을 한 줄씩 남긴다).
+-- 크라우드소싱으로 누구나 덮어쓸 수 있는 정보라, 악의적인 수정이 있었는지
+-- 나중에 조사할 수 있도록 "누가/언제/어떤 값으로" 바꿨는지 전체 이력을 보존한다.
+-- 개인 활동 로그와 성격이 비슷한 app_events처럼 조회는 관리자만 가능하다.
+create table if not exists public.gym_details_history (
+  id              uuid        primary key default gen_random_uuid(),
+  gym_id          uuid        not null references public.gyms(id) on delete cascade,
+  equipment_brand text,
+  cleanliness     integer,
+  trainer_count   integer,
+  memo            text,
+  changed_by      uuid        references public.users(uid) on delete set null,
+  changed_at      timestamptz not null default now()
+);
+
+create index if not exists gym_details_history_gym_id_idx
+  on public.gym_details_history (gym_id, changed_at desc);
+
+-- ⚠️ RLS 활성화 + is_admin()을 쓰는 정책은 이 파일 뒤쪽(2), 3) 섹션)에서
+-- is_admin()이 정의된 뒤에 처리한다 — is_admin()이 아직 없는 시점에 정책을
+-- 만들면(이 스크립트는 위에서부터 순서대로 실행되므로) "함수가 없다" 에러가 난다.
+
+-- 수정할 때마다 누가/언제/무엇으로 바꿨는지 자동으로 기록한다(클라이언트가 값을
+-- 조작할 수 없도록 트리거로 강제). updated_at/updated_by "최신 상태" 컬럼도 같이 채운다.
+create or replace function public.set_gym_detail_audit_fields()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  new.updated_at := now();
+  new.updated_by := auth.uid();
+
+  insert into public.gym_details_history (
+    gym_id, equipment_brand, cleanliness, trainer_count, memo, changed_by, changed_at
+  ) values (
+    new.gym_id, new.equipment_brand, new.cleanliness, new.trainer_count, new.memo,
+    new.updated_by, new.updated_at
+  );
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_gym_details_write on public.gym_details;
+create trigger on_gym_details_write
+  before insert or update on public.gym_details
+  for each row execute function public.set_gym_detail_audit_fields();
 
 -- 푸시 토큰 (원격 푸시 발송 대상). 한 유저가 여러 기기 토큰을 가질 수 있음.
 create table if not exists public.push_tokens (
@@ -168,35 +248,86 @@ end $$;
 create index if not exists user_interest_regions_user_id_idx
   on public.user_interest_regions (user_id);
 
+-- 헬스장 상세 가격(1개월 외 기간/개별 등록 내역) 열람 기록 — 하루 무료 열람 한도
+-- 계산에 쓰인다 (record_gym_price_view() 참고). 최근 1년 내 승인된 가격을
+-- 등록한 유저는 이 한도와 무관하게 무제한 열람하므로 그런 유저는 행이 쌓이지
+-- 않는다(무제한이라 셀 필요가 없음).
+create table if not exists public.gym_price_views (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null references public.users(uid) on delete cascade,
+  gym_id     uuid        not null references public.gyms(id) on delete cascade,
+  -- 한국시간 기준 "오늘" 날짜. 같은 헬스장을 하루에 여러 번 봐도 한도가 한 번만
+  -- 깎이도록, (user_id, gym_id, view_date) 조합을 유니크로 강제한다.
+  view_date  date        not null default ((now() at time zone 'Asia/Seoul')::date),
+  viewed_at  timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_price_views_unique_per_day'
+  ) then
+    alter table public.gym_price_views
+      add constraint gym_price_views_unique_per_day unique (user_id, gym_id, view_date);
+  end if;
+end $$;
+
+create index if not exists gym_price_views_user_date_idx
+  on public.gym_price_views (user_id, view_date);
+
 -- ----------------------------------------------------------------
 -- 2) RLS 활성화
 -- ----------------------------------------------------------------
-alter table public.users       enable row level security;
-alter table public.gyms        enable row level security;
-alter table public.gym_prices  enable row level security;
-alter table public.gym_details enable row level security;
-alter table public.push_tokens enable row level security;
-alter table public.app_events  enable row level security;
+alter table public.users               enable row level security;
+alter table public.gyms                enable row level security;
+alter table public.gym_prices          enable row level security;
+alter table public.gym_details         enable row level security;
+alter table public.gym_details_history enable row level security;
+alter table public.push_tokens         enable row level security;
+alter table public.app_events          enable row level security;
 alter table public.user_interest_regions enable row level security;
+alter table public.gym_price_views     enable row level security;
 
 -- 호출한 유저가 관리자인지 확인하는 헬퍼.
--- (자기 자신의 uid로만 조회하므로 users_select_self 정책 범위 안에서 안전하게 동작한다.)
+-- ⚠️ SECURITY DEFINER + 고정 search_path 필수:
+--   1) 이 함수는 users 테이블의 RLS 정책(users_select_admin) 안에서 호출된다.
+--      SECURITY DEFINER가 아니면(=INVOKER 권한으로 실행되면) 함수 내부의
+--      "select ... from public.users" 쿼리도 호출자 권한으로 다시 RLS를 타게 되고,
+--      그 RLS 정책이 다시 is_admin()을 호출하므로 PostgreSQL이 "infinite recursion
+--      detected in policy for relation users" 에러를 낼 수 있다. SECURITY DEFINER로
+--      함수 소유자 권한으로 실행하면 내부 쿼리가 RLS를 우회해 이 순환을 끊는다.
+--      (auth.uid()로 자기 자신의 행만 읽으므로 권한 우회가 문제되지 않는다 — 이
+--      함수로 타인의 is_admin 여부를 알아낼 방법은 없다.)
+--   2) search_path를 고정하지 않으면(SECURITY DEFINER 함수 특유의 취약점) 악의적인
+--      유저가 세션에서 search_path를 조작해 이름이 같은 가짜 오브젝트로 이 함수의
+--      쿼리를 가로챌 수 있다. public, pg_temp로 고정해 이를 막는다.
 create or replace function public.is_admin()
 returns boolean
 language sql
 stable
+security definer
+set search_path = public, pg_temp
 as $$
   select coalesce((select is_admin from public.users where uid = auth.uid()), false);
 $$;
 
--- 호출한 유저가 정지 상태인지 확인하는 헬퍼 (등록류 INSERT 정책에서 사용).
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to authenticated;
+
+-- 호출한 유저가 정지 상태인지 확인하는 헬퍼 (등록류 INSERT/UPDATE 정책에서 사용).
+-- is_admin()과 동일한 이유로 SECURITY DEFINER + 고정 search_path가 필요하다.
 create or replace function public.is_suspended()
 returns boolean
 language sql
 stable
+security definer
+set search_path = public, pg_temp
 as $$
   select coalesce((select is_suspended from public.users where uid = auth.uid()), false);
 $$;
+
+revoke all on function public.is_suspended() from public;
+grant execute on function public.is_suspended() to authenticated;
 
 -- ----------------------------------------------------------------
 -- 3) 정책
@@ -301,13 +432,16 @@ drop policy if exists "gym_prices_insert_auth" on public.gym_prices;
 create policy "gym_prices_insert_auth"  on public.gym_prices for insert to authenticated
   with check (auth.uid() = user_id and not public.is_suspended());
 
--- UPDATE: 본인 또는 관리자만. "본인은 가격만/관리자는 status만" 세부 규칙은
--- 아래 enforce_gym_price_update_rules 트리거가 강제한다.
+-- UPDATE: 본인(단, 정지되지 않은 경우만) 또는 관리자만. "본인은 가격만/관리자는
+-- status만" 세부 규칙은 아래 enforce_gym_price_update_rules 트리거가 강제한다.
+-- ⚠️ 정지된 유저는 새 가격 등록(INSERT)만 막혀 있었고 기존 가격 수정(UPDATE)은
+-- 막혀 있지 않았다 — 등록과 동일하게 정지 중에는 수정도 못 하도록 막는다
+-- (관리자는 정지 여부와 무관하게 심사를 위해 계속 수정 가능해야 한다).
 drop policy if exists "gym_prices_update_owner" on public.gym_prices;
 drop policy if exists "gym_prices_update_owner_or_admin" on public.gym_prices;
 create policy "gym_prices_update_owner_or_admin" on public.gym_prices for update to authenticated
-  using (auth.uid() = user_id or public.is_admin())
-  with check (auth.uid() = user_id or public.is_admin());
+  using ((auth.uid() = user_id and not public.is_suspended()) or public.is_admin())
+  with check ((auth.uid() = user_id and not public.is_suspended()) or public.is_admin());
 
 drop policy if exists "gym_prices_delete_owner" on public.gym_prices;
 create policy "gym_prices_delete_owner" on public.gym_prices for delete to authenticated
@@ -370,6 +504,14 @@ drop policy if exists "gym_details_update_auth" on public.gym_details;
 create policy "gym_details_update_auth" on public.gym_details for update to authenticated
   using (true) with check (not public.is_suspended());
 
+-- gym_details_history (수정 이력 — 개인 행동 로그와 성격이 비슷해 조회는 관리자만.
+-- INSERT는 set_gym_detail_audit_fields 트리거가 SECURITY DEFINER로 처리하므로
+-- 일반 유저용 정책은 두지 않는다 — 직접 쓰거나 지울 수 없다.)
+drop policy if exists "gym_details_history_select_admin" on public.gym_details_history;
+create policy "gym_details_history_select_admin" on public.gym_details_history
+  for select to authenticated
+  using (public.is_admin());
+
 -- push_tokens (본인 토큰만 관리, 조회도 본인 것만)
 drop policy if exists "push_tokens_select_self" on public.push_tokens;
 create policy "push_tokens_select_self" on public.push_tokens for select to authenticated
@@ -426,6 +568,86 @@ create trigger on_user_interest_region_insert
   before insert on public.user_interest_regions
   for each row execute function public.enforce_interest_region_limit();
 
+-- gym_price_views (본인 명의 조회 기록만 볼 수 있다. INSERT는 아래
+-- record_gym_price_view() 함수만 하므로 일반 유저용 INSERT 정책은 두지 않는다
+-- — 클라이언트가 직접 행을 넣어 열람 한도를 조작할 수 없게 막는다.)
+drop policy if exists "gym_price_views_select_self" on public.gym_price_views;
+create policy "gym_price_views_select_self" on public.gym_price_views
+  for select to authenticated
+  using (auth.uid() = user_id);
+
+-- 헬스장 상세 가격(1개월 외) 열람 요청을 판정하고, 허용된 경우 오늘 조회로
+-- 기록까지 함께 처리하는 RPC 함수.
+--   - 최근 1년 내 승인된 가격을 1건이라도 등록한 유저 → 무제한 허용(reason: contributor)
+--   - 그 외 유저는 하루 최대 3개 헬스장까지만 허용. 오늘 이미 본 헬스장이면
+--     한도를 다시 깎지 않고 그대로 허용(reason: already_viewed_today)
+--   - 오늘 새로 보는 헬스장이고 한도(3곳) 안이면 허용 + 기록(reason: within_limit)
+--   - 한도를 넘었으면 거부(allowed: false, reason: daily_limit_reached)
+-- SECURITY DEFINER로 실행하되, auth.uid()로만 판단해 호출자 본인 데이터 밖으로
+-- 벗어날 수 없다(다른 유저의 한도를 조회/소모시킬 방법이 없다).
+create or replace function public.record_gym_price_view(target_gym_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  caller uuid := auth.uid();
+  today date := (now() at time zone 'Asia/Seoul')::date;
+  is_contributor boolean;
+  already_viewed boolean;
+  views_today integer;
+  daily_limit constant integer := 3;
+begin
+  if caller is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select exists (
+    select 1 from public.gym_prices
+    where user_id = caller
+      and status = 'approved'
+      and created_at >= now() - interval '1 year'
+  ) into is_contributor;
+
+  if is_contributor then
+    return jsonb_build_object('allowed', true, 'reason', 'contributor', 'remaining', null);
+  end if;
+
+  select exists (
+    select 1 from public.gym_price_views
+    where user_id = caller and gym_id = target_gym_id and view_date = today
+  ) into already_viewed;
+
+  select count(*) into views_today
+    from public.gym_price_views
+    where user_id = caller and view_date = today;
+
+  if already_viewed then
+    return jsonb_build_object(
+      'allowed', true, 'reason', 'already_viewed_today',
+      'remaining', greatest(daily_limit - views_today, 0)
+    );
+  end if;
+
+  if views_today >= daily_limit then
+    return jsonb_build_object('allowed', false, 'reason', 'daily_limit_reached', 'remaining', 0);
+  end if;
+
+  insert into public.gym_price_views (user_id, gym_id, view_date)
+  values (caller, target_gym_id, today)
+  on conflict (user_id, gym_id, view_date) do nothing;
+
+  return jsonb_build_object(
+    'allowed', true, 'reason', 'within_limit',
+    'remaining', greatest(daily_limit - (views_today + 1), 0)
+  );
+end;
+$$;
+
+revoke all on function public.record_gym_price_view(uuid) from public;
+grant execute on function public.record_gym_price_view(uuid) to authenticated;
+
 -- ----------------------------------------------------------------
 -- 4) 회원가입 시 public.users 프로필 자동 생성 트리거
 --    - auth.users에 새 유저가 생기면(이메일/SNS 공통) 프로필을 만든다.
@@ -436,7 +658,7 @@ create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
   insert into public.users (uid, email, nickname)
@@ -456,9 +678,14 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ----------------------------------------------------------------
--- 5) 새 가격 등록 시 푸시 알림 (Edge Function 연결)
---    권장: Dashboard → Database → Webhooks 로 gym_prices INSERT 시
+-- 5) 가격 승인 시 푸시 알림 (Edge Function 연결)
+--    ⚠️ pending 상태로 등록되는 시점(INSERT)이 아니라, 관리자가 승인해
+--       status가 approved로 바뀌는 시점(UPDATE)에만 알림이 나가야 한다
+--       (미승인 가격이 알림으로 나가면 안 된다는 정책). 그래서 아래처럼
+--       INSERT가 아니라 UPDATE에 연결해야 한다.
+--    권장: Dashboard → Database → Webhooks 로 gym_prices UPDATE 시
 --          Edge Function `on-new-price` 를 호출하도록 설정한다.
+--          (자세한 내용은 supabase/functions/README.md 참고)
 --    (SQL로 직접 트리거하려면 pg_net 확장 + 아래 형태를 사용. URL/키는
 --     프로젝트별 값이라 주석으로만 남긴다.)
 --
@@ -472,11 +699,13 @@ create trigger on_auth_user_created
 --       'Content-Type', 'application/json',
 --       'Authorization', 'Bearer <service-role-key>'
 --     ),
---     body := jsonb_build_object('type', 'INSERT', 'record', to_jsonb(new))
+--     body := jsonb_build_object(
+--       'type', 'UPDATE', 'record', to_jsonb(new), 'old_record', to_jsonb(old)
+--     )
 --   );
 --   return new;
 -- end; $$;
 -- drop trigger if exists on_gym_price_created on public.gym_prices;
 -- create trigger on_gym_price_created
---   after insert on public.gym_prices
+--   after update on public.gym_prices
 --   for each row execute function public.notify_new_price();

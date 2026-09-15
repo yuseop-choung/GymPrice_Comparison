@@ -140,7 +140,10 @@ describe("searchPlaces - REST 키가 있을 때 결과 필터링", () => {
       }),
     });
 
+    // 이 프로젝트의 Jest 설정(CJS 변환)은 동적 import()를 지원하지 않아,
+    // jest.resetModules() 이후 새 모듈 인스턴스를 얻으려면 require가 필요하다.
     const { searchPlaces: searchPlacesWithKey } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("./kakao") as typeof import("./kakao");
     const result = await searchPlacesWithKey("강철짐", { lat: 37.5, lng: 127.0 });
 

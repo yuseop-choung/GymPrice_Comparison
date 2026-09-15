@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>GymPrice Admin</title>
-<link rel="stylesheet" href="style.css?v=4" />
+<link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 
@@ -21,6 +21,8 @@
   var allUsers = [];
   var allGyms = [];
   var editingGymId = null;
+  var historyOpenGymId = null; // 부가정보 이력을 펼쳐놓은 헬스장 id (한 번에 하나만)
+  var historyCache = {}; // gym_id -> 이력 배열 (다시 펼칠 때 재조회 방지)
 
   function renderManage(sb, user, renderLogin) {
     currentUser = user;
@@ -210,9 +212,48 @@
       '<td class="cell-muted">' + G.fmtDate(g.created_at) + "</td>" +
       '<td><div class="cell-actions">' +
       '  <button class="btn-ghost" data-edit-gym="' + g.id + '">수정</button>' +
+      '  <button class="btn-ghost" data-toggle-history="' + g.id + '">부가정보 이력</button>' +
       '  <button class="btn-reject" data-delete-gym="' + g.id + '">삭제</button>' +
       "</div></td>" +
       "</tr>"
+    );
+  }
+
+  /** 헬스장 행 아래 펼쳐지는 부가정보(gym_details) 수정 이력 패널 */
+  function gymHistoryRow(gymId) {
+    var entries = historyCache[gymId];
+    var content;
+    if (!entries) {
+      content = '<div class="empty">불러오는 중...</div>';
+    } else if (entries.length === 0) {
+      content = '<div class="empty">수정 이력이 없습니다.</div>';
+    } else {
+      content =
+        '<div class="table-wrap"><table class="data-table">' +
+        "<thead><tr><th>변경일시</th><th>변경자</th><th>장비 브랜드</th><th>청결도</th><th>트레이너 수</th><th>메모</th></tr></thead>" +
+        "<tbody>" +
+        entries
+          .map(function (h) {
+            var changer = h.users ? h.users.nickname || h.users.email : "알 수 없음";
+            return (
+              "<tr>" +
+              '<td class="cell-muted">' + G.fmtDate(h.changed_at) + "</td>" +
+              "<td>" + G.escapeHtml(changer) + "</td>" +
+              "<td>" + G.escapeHtml(h.equipment_brand || "-") + "</td>" +
+              "<td>" + (h.cleanliness != null ? h.cleanliness + "/5" : "-") + "</td>" +
+              "<td>" + (h.trainer_count != null ? h.trainer_count + "명" : "-") + "</td>" +
+              "<td>" + G.escapeHtml(h.memo || "-") + "</td>" +
+              "</tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table></div>";
+    }
+    return (
+      '<tr class="history-row"><td colspan="4">' +
+      '<div class="section-title" style="margin-top:0">부가정보 수정 이력</div>' +
+      content +
+      "</td></tr>"
     );
   }
 
@@ -237,7 +278,11 @@
       return;
     }
     var rows = gyms
-      .map(function (g) { return g.id === editingGymId ? gymRowEdit(g) : gymRowView(g); })
+      .map(function (g) {
+        var row = g.id === editingGymId ? gymRowEdit(g) : gymRowView(g);
+        if (g.id === historyOpenGymId) row += gymHistoryRow(g.id);
+        return row;
+      })
       .join("");
 
     body.innerHTML =
@@ -256,6 +301,28 @@
       btn.onclick = function () {
         editingGymId = null;
         renderGyms(sb, allGyms);
+      };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-toggle-history]"), function (btn) {
+      btn.onclick = function () {
+        var id = btn.getAttribute("data-toggle-history");
+        if (historyOpenGymId === id) {
+          historyOpenGymId = null;
+          renderGyms(sb, allGyms);
+          return;
+        }
+        historyOpenGymId = id;
+        renderGyms(sb, allGyms); // 먼저 "불러오는 중" 상태로 펼쳐 보여준다
+        if (!historyCache[id]) {
+          sb.from("gym_details_history")
+            .select("*, users(nickname, email)")
+            .eq("gym_id", id)
+            .order("changed_at", { ascending: false })
+            .then(function (res) {
+              historyCache[id] = res.error ? [] : res.data || [];
+              if (historyOpenGymId === id) renderGyms(sb, allGyms);
+            });
+        }
       };
     });
     Array.prototype.forEach.call(body.querySelectorAll("button[data-save-gym]"), function (btn) {

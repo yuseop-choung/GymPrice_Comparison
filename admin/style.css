@@ -554,3 +554,9 @@ svg.chart-svg { display: block; width: 100%; height: auto; overflow: visible; }
 .data-table .cell-muted { color: var(--text-secondary); font-size: 12px; }
 .data-table .cell-actions { display: flex; gap: 6px; white-space: nowrap; }
 .data-table .cell-actions button { padding: 6px 10px; font-size: 12px; }
+
+/* 헬스장 관리 페이지 - 부가정보 수정 이력 펼침 패널 */
+.history-row > td {
+  background: var(--surface-2);
+  padding: 16px !important;
+}

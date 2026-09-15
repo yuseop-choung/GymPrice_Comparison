@@ -29,9 +29,17 @@ export default function GymDetailEditScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { id: gymId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { initial, error, isBusy, save } = useEditGymDetail(gymId, () =>
+  const { initial, loadError, error, isBusy, save } = useEditGymDetail(gymId, () =>
     router.back()
   );
+
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>{loadError}</Text>
+      </View>
+    );
+  }
 
   if (!initial) {
     return (

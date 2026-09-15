@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { toFriendlyErrorMessage } from "../../lib/api/errors";
+import { useAuthStore } from "../../store/authStore";
 import type {
   Gym,
   GymDetail,
@@ -13,6 +15,10 @@ import {
   registerGym,
   saveGymDetail,
 } from "./api";
+
+/** 정지된 계정에게 보여줄 안내 메시지 (등록/수정 시도 전에 미리 막을 때 공용으로 쓴다) */
+const SUSPENDED_MESSAGE =
+  "정지된 계정은 이 기능을 사용할 수 없습니다. 문의가 필요하면 관리자에게 연락해주세요.";
 
 /** 헬스장 상세 데이터 (기본 정보 + 가격 목록 + 부가정보) */
 interface GymDetailData {
@@ -71,17 +77,24 @@ interface UseNearbyGymsResult {
 /**
  * 내 주변 헬스장 목록 조회 훅 (비즈니스 로직 전담)
  * - 위경도/반경 변경 시 자동 재조회. getNearbyGyms() 호출.
+ * - enabled=false인 동안은 조회하지 않는다. useLocation()이 실제 GPS 좌표를
+ *   확정하기 전까지는 DEFAULT_COORDS(폴백 좌표)가 lat/lng로 들어오는데, 그
+ *   상태로 바로 조회하면 엉뚱한 위치 기준으로 불필요한 요청이 한 번 나가고
+ *   실제 GPS가 잡히면 곧바로 또 요청이 나가는 낭비가 생긴다. 호출부에서
+ *   `enabled: !isLocating`처럼 넘겨 GPS 확정 후에만 조회하게 한다.
  */
 export function useNearbyGyms(
   lat: number,
   lng: number,
-  radiusKm: number
+  radiusKm: number,
+  enabled: boolean = true
 ): UseNearbyGymsResult {
   const [gyms, setGyms] = useState<GymWithPrice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchGyms = useCallback(async () => {
+    if (!enabled) return;
     setIsLoading(true);
     setError(null);
 
@@ -95,7 +108,7 @@ export function useNearbyGyms(
     } finally {
       setIsLoading(false);
     }
-  }, [lat, lng, radiusKm]);
+  }, [lat, lng, radiusKm, enabled]);
 
   useEffect(() => {
     fetchGyms();
@@ -125,6 +138,7 @@ interface UseRegisterGymResult {
 export function useRegisterGym({
   onSuccess,
 }: UseRegisterGymParams = {}): UseRegisterGymResult {
+  const user = useAuthStore((state) => state.user);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,6 +151,12 @@ export function useRegisterGym({
       setError("위치(위도/경도)가 올바르지 않습니다.");
       return;
     }
+    // 서버(RLS)도 정지 계정의 등록을 막지만, 여기서 미리 걸러 기술적인 에러
+    // 문구 대신 이해할 수 있는 안내를 바로 보여준다.
+    if (user?.is_suspended) {
+      setError(SUSPENDED_MESSAGE);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -145,7 +165,7 @@ export function useRegisterGym({
       const created = await registerGym(input);
       onSuccess?.(created);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "헬스장 등록에 실패했습니다.");
+      setError(toFriendlyErrorMessage(e, "헬스장 등록에 실패했습니다."));
     } finally {
       setIsLoading(false);
     }
@@ -156,12 +176,14 @@ export function useRegisterGym({
 
 interface UseEditGymDetailResult {
   initial: GymDetailValues | null;
+  /** 기존 값 로드 자체가 실패한 경우(네트워크/권한/서버 오류 등)의 메시지 */
+  loadError: string | null;
   error: string | null;
   isBusy: boolean;
   save: (values: GymDetailValues) => Promise<void>;
 }
 
-/** 빈 부가정보 입력값 (신규 등록 시 기본값) */
+/** 빈 부가정보 입력값 (신규 등록 시 기본값 — "아직 등록된 정보 없음"과 구분해서 쓴다) */
 const EMPTY_DETAIL: GymDetailValues = {
   equipment_brand: null,
   cleanliness: null,
@@ -173,12 +195,18 @@ const EMPTY_DETAIL: GymDetailValues = {
  * 헬스장 부가정보 수정 훅 (비즈니스 로직 전담)
  * - 마운트 시 기존 값을 불러오고(없으면 빈 값), 저장한다.
  * - 청결도는 1~5 범위만 허용.
+ * - ⚠️ "기존 정보가 없음"(정상, EMPTY_DETAIL)과 "불러오기 실패"(loadError)를
+ *   반드시 구분한다. 이걸 구분하지 않고 실패 시에도 EMPTY_DETAIL을 쓰면, 조회가
+ *   네트워크/권한 오류로 실패했을 뿐인데 사용자에게는 빈 폼이 보여서 그대로
+ *   저장을 누르면 실제로 존재하던 값을 null로 덮어써 데이터가 유실될 수 있다.
  */
 export function useEditGymDetail(
   gymId: string,
   onDone: () => void
 ): UseEditGymDetailResult {
+  const user = useAuthStore((state) => state.user);
   const [initial, setInitial] = useState<GymDetailValues | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
@@ -196,7 +224,11 @@ export function useEditGymDetail(
             : EMPTY_DETAIL
         )
       )
-      .catch(() => setInitial(EMPTY_DETAIL));
+      .catch((e) =>
+        setLoadError(
+          e instanceof Error ? e.message : "부가정보를 불러오지 못했습니다."
+        )
+      );
   }, [gymId]);
 
   async function save(values: GymDetailValues): Promise<void> {
@@ -207,6 +239,10 @@ export function useEditGymDetail(
       setError("청결도는 1~5 사이로 입력해주세요.");
       return;
     }
+    if (user?.is_suspended) {
+      setError(SUSPENDED_MESSAGE);
+      return;
+    }
 
     setIsBusy(true);
     setError(null);
@@ -214,11 +250,11 @@ export function useEditGymDetail(
       await saveGymDetail(gymId, values);
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "부가정보 저장에 실패했습니다.");
+      setError(toFriendlyErrorMessage(e, "부가정보 저장에 실패했습니다."));
     } finally {
       setIsBusy(false);
     }
   }
 
-  return { initial, error, isBusy, save };
+  return { initial, loadError, error, isBusy, save };
 }

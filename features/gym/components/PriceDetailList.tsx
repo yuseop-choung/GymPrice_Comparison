@@ -4,7 +4,7 @@ import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, radius, spacing } from "../../../constants/layout";
 import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { GymPrice } from "../../../types";
-import { dedupePrices, formatPrice, summarizePrices } from "../../price/utils";
+import { dedupePrices, formatPrice, isStalePrice, summarizePrices } from "../../price/utils";
 
 /** ISO 날짜 문자열을 "YYYY.MM.DD"로 표시 */
 function formatDate(iso: string): string {
@@ -50,7 +50,12 @@ export function PriceDetailList({ prices }: PriceDetailListProps) {
             </View>
             <Text style={styles.price}>{formatPrice(price.price)}</Text>
             {price.memo ? <Text style={styles.memo}>{price.memo}</Text> : null}
-            <Text style={styles.date}>{formatDate(price.created_at)}</Text>
+            <View style={styles.dateRow}>
+              <Text style={styles.date}>{formatDate(price.created_at)}</Text>
+              {isStalePrice(price.created_at) ? (
+                <Text style={styles.staleNote}>오래된 정보일 수 있어요</Text>
+              ) : null}
+            </View>
           </View>
         );
       })}
@@ -103,10 +108,19 @@ function createStyles(colors: ColorTheme) {
       color: colors.textSecondary,
       marginTop: spacing.xs,
     },
+    dateRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
     date: {
       fontSize: fontSize.sm,
       color: colors.textSecondary,
-      marginTop: spacing.sm,
+    },
+    staleNote: {
+      fontSize: fontSize.sm,
+      color: colors.error,
     },
   });
 }

@@ -35,9 +35,16 @@ export function PriceSummary({ prices }: PriceSummaryProps) {
           <Text style={[styles.cell, styles.value, styles.min]}>
             {formatPrice(stat.min)}
           </Text>
-          <Text style={[styles.cell, styles.value]}>
-            {formatPrice(stat.avg)}
-          </Text>
+          <View style={styles.valueCol}>
+            <Text style={styles.avgText}>{formatPrice(stat.avg)}</Text>
+            {/* 평균은 극단값(허위 제보 등) 하나에도 크게 흔들릴 수 있어, 다르면
+                중앙값을 참고용으로 함께 보여준다(평균을 대체하지 않음). */}
+            {stat.median !== stat.avg ? (
+              <Text style={styles.medianText}>
+                중앙값 {formatPrice(stat.median)}
+              </Text>
+            ) : null}
+          </View>
         </View>
       ))}
     </View>
@@ -81,9 +88,22 @@ function createStyles(colors: ColorTheme) {
       textAlign: "right",
       color: colors.text,
     },
+    valueCol: {
+      flex: 1.3,
+      alignItems: "flex-end",
+    },
     min: {
       color: colors.primary,
       fontWeight: "700",
+    },
+    avgText: {
+      color: colors.text,
+      fontSize: fontSize.md,
+    },
+    medianText: {
+      color: colors.textSecondary,
+      fontSize: fontSize.sm,
+      marginTop: 2,
     },
   });
 }

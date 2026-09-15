@@ -28,7 +28,8 @@ export default function HomeScreen() {
   const { gyms, isLoading, error, refetch } = useNearbyGyms(
     coords.lat,
     coords.lng,
-    SEARCH_RADIUS_KM
+    SEARCH_RADIUS_KM,
+    !isLocating // GPS가 아직 확정되지 않았으면(DEFAULT_COORDS 상태) 조회를 미룬다
   );
   useSyncUserLocation(coords, isLocating); // 내 동네 저장 (위치기반 알림용, GPS 확정 후에만)
 
