@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import type { ColorTheme } from "../../constants/colors";
@@ -77,35 +77,40 @@ export default function RegisterScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>헬스장 등록</Text>
 
-      <GymSearchBox
-        query={query}
-        onQueryChange={handleQueryChange}
-        onSubmit={() => search(query)}
-        isSearching={isSearching}
-        searchError={searchError}
-        results={results}
-        onSelectResult={handleSelect}
-      />
+      <View style={styles.section}>
+        <GymSearchBox
+          query={query}
+          onQueryChange={handleQueryChange}
+          onSubmit={() => search(query)}
+          isSearching={isSearching}
+          searchError={searchError}
+          results={results}
+          onSelectResult={handleSelect}
+          onDismissResults={resetResults}
+        />
+      </View>
 
-      <Input
-        label="헬스장 이름"
-        value={name}
-        onChangeText={setName}
-        placeholder="예: 강철짐 강남점"
-      />
-      <Input
-        label="주소 (선택)"
-        value={address}
-        onChangeText={setAddress}
-        placeholder="검색 결과가 없으면 직접 입력해주세요 (생략 가능)"
-      />
-      <Input
-        label="전화번호 (선택)"
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="예: 02-1234-5678"
-        keyboardType="phone-pad"
-      />
+      <View style={styles.section}>
+        <Input
+          label="헬스장 이름"
+          value={name}
+          onChangeText={setName}
+          placeholder="예: 강철짐 강남점"
+        />
+        <Input
+          label="주소 (선택)"
+          value={address}
+          onChangeText={setAddress}
+          placeholder="검색 결과가 없으면 직접 입력해주세요 (생략 가능)"
+        />
+        <Input
+          label="전화번호 (선택)"
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="예: 02-1234-5678"
+          keyboardType="phone-pad"
+        />
+      </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -127,7 +132,11 @@ function createStyles(colors: ColorTheme) {
       fontSize: fontSize.xl,
       fontWeight: "700",
       color: colors.text,
-      marginBottom: spacing.lg,
+      marginBottom: spacing.xl,
+    },
+    section: {
+      gap: spacing.md,
+      marginBottom: spacing.xl,
     },
     error: {
       fontSize: fontSize.sm,

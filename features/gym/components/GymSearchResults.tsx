@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { ColorTheme } from "../../../constants/colors";
-import { fontSize, radius, spacing } from "../../../constants/layout";
+import { fontSize, spacing } from "../../../constants/layout";
 import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { KakaoPlace } from "../../../lib/api/kakao";
 import { formatDistance } from "../utils";
@@ -49,10 +49,7 @@ export function GymSearchResults({ results, onSelect }: GymSearchResultsProps) {
 function createStyles(colors: ColorTheme) {
   return StyleSheet.create({
     list: {
-      backgroundColor: colors.surface,
-      borderRadius: radius.md,
       overflow: "hidden",
-      marginBottom: spacing.md,
     },
     item: {
       padding: spacing.md,
