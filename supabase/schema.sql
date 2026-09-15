@@ -12,16 +12,17 @@ create table if not exists public.users (
   nickname         text        not null,
   home_lat         double precision, -- 내 동네 위도 (위치기반 알림용)
   home_lng         double precision, -- 내 동네 경도
-  interest_sido    text, -- 관심 지역 시/도 (예: "서울특별시")
-  interest_sigungu text, -- 관심 지역 시/군/구 (예: "강남구")
   created_at       timestamptz not null default now()
 );
 
 -- 이미 만들어진 users 테이블에도 컬럼 추가
 alter table public.users add column if not exists home_lat double precision;
 alter table public.users add column if not exists home_lng double precision;
-alter table public.users add column if not exists interest_sido text;
-alter table public.users add column if not exists interest_sigungu text;
+-- ⚠️ 관심 지역을 시/도+시/군/구 문자열 컬럼 1쌍이 아니라 최대 5개까지 등록 가능한
+-- 목록으로 바꾸면서 users 테이블이 아닌 별도 테이블(user_interest_regions)로
+-- 옮겼다. 예전 컬럼이 남아있으면 제거한다(테스트 데이터만 있다는 전제).
+alter table public.users drop column if exists interest_sido;
+alter table public.users drop column if exists interest_sigungu;
 -- 관리자 여부 (가격 심사 등 관리자 전용 기능에 사용). 앱에는 관리자 지정 UI가 없으므로
 -- 최초 관리자는 SQL Editor에서 직접 켜야 한다:
 --   update public.users set is_admin = true where email = '본인 이메일';
@@ -144,6 +145,29 @@ end $$;
 
 create index if not exists app_events_created_at_idx on public.app_events (created_at);
 
+-- 관심 지역 (시/도 + 시/군/구, 최대 5개/유저). 관심 지역 안의 헬스장에 새 최저가가
+-- 등록되면 알림을 보내는 데 사용한다 (on-new-price Edge Function 참고).
+create table if not exists public.user_interest_regions (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null references public.users(uid) on delete cascade,
+  sido       text        not null,
+  sigungu    text        not null,
+  created_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'user_interest_regions_unique'
+  ) then
+    alter table public.user_interest_regions
+      add constraint user_interest_regions_unique unique (user_id, sido, sigungu);
+  end if;
+end $$;
+
+create index if not exists user_interest_regions_user_id_idx
+  on public.user_interest_regions (user_id);
+
 -- ----------------------------------------------------------------
 -- 2) RLS 활성화
 -- ----------------------------------------------------------------
@@ -153,6 +177,7 @@ alter table public.gym_prices  enable row level security;
 alter table public.gym_details enable row level security;
 alter table public.push_tokens enable row level security;
 alter table public.app_events  enable row level security;
+alter table public.user_interest_regions enable row level security;
 
 -- 호출한 유저가 관리자인지 확인하는 헬퍼.
 -- (자기 자신의 uid로만 조회하므로 users_select_self 정책 범위 안에서 안전하게 동작한다.)
@@ -197,8 +222,8 @@ drop policy if exists "users_update_self" on public.users;
 create policy "users_update_self" on public.users for update to authenticated
   using (auth.uid() = uid) with check (auth.uid() = uid);
 -- 관리자는 다른 유저의 관리자 권한을 부여/해제할 수 있어야 한다(관리자 페이지의
--- "유저 관리" 기능). is_admin 외 다른 필드(닉네임/이메일/위치/관심 지역)는 아래
--- 트리거가 관리자가 "타인의" 행을 건드릴 때만 원래 값으로 되돌려 막는다.
+-- "유저 관리" 기능). is_admin 외 다른 필드(닉네임/이메일/위치)는 아래 트리거가
+-- 관리자가 "타인의" 행을 건드릴 때만 원래 값으로 되돌려 막는다.
 drop policy if exists "users_update_admin" on public.users;
 create policy "users_update_admin" on public.users for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -225,8 +250,6 @@ begin
     new.nickname := old.nickname;
     new.home_lat := old.home_lat;
     new.home_lng := old.home_lng;
-    new.interest_sido := old.interest_sido;
-    new.interest_sigungu := old.interest_sigungu;
   else
     new.is_admin := old.is_admin;
     new.is_suspended := old.is_suspended;
@@ -368,6 +391,40 @@ create policy "app_events_insert_self" on public.app_events for insert to authen
 drop policy if exists "app_events_select_admin" on public.app_events;
 create policy "app_events_select_admin" on public.app_events for select to authenticated
   using (public.is_admin());
+
+-- user_interest_regions (본인 명의로만 조회/추가/삭제)
+drop policy if exists "user_interest_regions_select_self" on public.user_interest_regions;
+create policy "user_interest_regions_select_self" on public.user_interest_regions
+  for select to authenticated
+  using (auth.uid() = user_id);
+drop policy if exists "user_interest_regions_insert_self" on public.user_interest_regions;
+create policy "user_interest_regions_insert_self" on public.user_interest_regions
+  for insert to authenticated
+  with check (auth.uid() = user_id);
+drop policy if exists "user_interest_regions_delete_self" on public.user_interest_regions;
+create policy "user_interest_regions_delete_self" on public.user_interest_regions
+  for delete to authenticated
+  using (auth.uid() = user_id);
+-- (수정은 없음 — 지역을 바꾸려면 삭제 후 다시 추가한다)
+
+-- 관심 지역은 최대 5개까지만 등록 가능하게 강제한다(RLS의 with check만으로는
+-- "내가 이미 가진 행의 개수"를 셀 수 없어 트리거로 처리).
+create or replace function public.enforce_interest_region_limit()
+returns trigger
+language plpgsql
+as $$
+begin
+  if (select count(*) from public.user_interest_regions where user_id = new.user_id) >= 5 then
+    raise exception '관심 지역은 최대 5개까지 설정할 수 있습니다.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_user_interest_region_insert on public.user_interest_regions;
+create trigger on_user_interest_region_insert
+  before insert on public.user_interest_regions
+  for each row execute function public.enforce_interest_region_limit();
 
 -- ----------------------------------------------------------------
 -- 4) 회원가입 시 public.users 프로필 자동 생성 트리거
