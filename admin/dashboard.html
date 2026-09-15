@@ -56,14 +56,21 @@
     G.loadPendingBadge(sb);
   }
 
+  function todayStartIso() {
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }
+
   function loadData(sb) {
     Promise.all([
       sb.from("users").select("created_at"),
       sb.from("gyms").select("id", { count: "exact", head: true }),
-      sb.from("gym_prices").select("user_id, status, created_at")
+      sb.from("gym_prices").select("user_id, status, created_at"),
+      sb.from("app_events").select("user_id, event_type").gte("created_at", todayStartIso())
     ]).then(function (results) {
-      var usersRes = results[0], gymsRes = results[1], pricesRes = results[2];
-      var err = usersRes.error || gymsRes.error || pricesRes.error;
+      var usersRes = results[0], gymsRes = results[1], pricesRes = results[2], eventsRes = results[3];
+      var err = usersRes.error || gymsRes.error || pricesRes.error || eventsRes.error;
       if (err) {
         document.getElementById("dash-body").innerHTML =
           '<div class="error-text">데이터를 불러오지 못했습니다: ' + G.escapeHtml(err.message) + '</div>';
@@ -72,7 +79,8 @@
       RAW = {
         users: usersRes.data || [],
         gymsCount: gymsRes.count || 0,
-        prices: pricesRes.data || []
+        prices: pricesRes.data || [],
+        todayEvents: eventsRes.data || []
       };
       renderBody();
     });
@@ -100,8 +108,22 @@
       { label: "승인 경험", count: approvedSubmitterCount }
     ];
 
+    var todayOpenUsers = {};
+    var todayViewCount = 0;
+    RAW.todayEvents.forEach(function (e) {
+      if (e.event_type === "app_open") todayOpenUsers[e.user_id] = true;
+      else if (e.event_type === "gym_view") todayViewCount += 1;
+    });
+    var todayActiveCount = Object.keys(todayOpenUsers).length;
+
     var body = document.getElementById("dash-body");
     body.innerHTML =
+      '<div class="section-title">오늘의 활동</div>' +
+      '<div class="stat-grid">' +
+        statTile("오늘 접속(고유 유저)", todayActiveCount) +
+        statTile("오늘 헬스장 조회수", todayViewCount) +
+      '</div>' +
+
       '<div class="section-title">핵심 지표</div>' +
       '<div class="stat-grid">' +
         statTile("총 가입자", users.length) +
