@@ -18,6 +18,7 @@ import {
   getPriceMock,
   registerGymMock,
   saveGymDetailMock,
+  searchGymsMock,
   submitPricesMock,
   updatePriceMock,
 } from "./mock";
@@ -202,6 +203,26 @@ export async function registerGym(
   if (!created) throw new Error("헬스장 등록에 실패했습니다.");
 
   return created;
+}
+
+/**
+ * 이름으로 이미 등록된 헬스장 검색 (가격만 등록할 대상 헬스장을 고를 때 사용)
+ * - 카카오 장소 검색(searchPlaces)과 달리 우리 DB에 이미 등록된 헬스장만 대상으로 한다.
+ * - ilike()는 값 자체를 안전하게 파라미터로 넘기므로 SQL 인젝션 걱정이 없다
+ *   (.or()로 문자열을 직접 조합하는 방식은 피한다).
+ */
+export async function searchGyms(keyword: string): Promise<Gym[]> {
+  if (USE_MOCK) return searchGymsMock(keyword);
+
+  const { data, error } = await supabase
+    .from("gyms")
+    .select("*")
+    .ilike("name", `%${keyword}%`)
+    .order("name")
+    .limit(20)
+    .returns<Gym[]>();
+  if (error) throw new Error(error.message);
+  return data ?? [];
 }
 
 /** 가격 단건 조회 */
