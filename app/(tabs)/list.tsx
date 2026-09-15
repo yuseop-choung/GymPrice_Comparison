@@ -19,11 +19,12 @@ export default function ListScreen() {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("distance");
-  const { coords } = useLocation();
+  const { coords, isLoading: isLocating } = useLocation();
   const { gyms, isLoading, error, refetch } = useNearbyGyms(
     coords.lat,
     coords.lng,
-    SEARCH_RADIUS_KM
+    SEARCH_RADIUS_KM,
+    !isLocating // GPS가 아직 확정되지 않았으면(DEFAULT_COORDS 상태) 조회를 미룬다
   );
 
   // 키워드 필터 → 정렬 순으로 가공 (가격 없는 곳은 최저가순에서 뒤로)

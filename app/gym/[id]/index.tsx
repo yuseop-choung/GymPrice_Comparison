@@ -71,7 +71,7 @@ export default function GymDetailScreen() {
           }
         />
 
-        <GymPriceSection prices={prices} />
+        <GymPriceSection gymId={gymId} prices={prices} />
       </ScrollView>
 
       <View style={styles.footer}>

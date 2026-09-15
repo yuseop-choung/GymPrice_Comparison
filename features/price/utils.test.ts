@@ -1,7 +1,9 @@
 import type { GymPrice } from "../../types";
 import {
   formatPrice,
+  isStalePrice,
   latestByGroup,
+  STALE_PRICE_DAYS,
   summarizePrices,
   validatePriceItem,
 } from "./utils";
@@ -85,10 +87,22 @@ describe("summarizePrices", () => {
     const stats = summarizePrices(prices);
 
     const oneMonth = stats.find((s) => s.label === "1개월");
-    expect(oneMonth).toEqual({ label: "1개월", min: 50000, avg: 55000, count: 2 });
+    expect(oneMonth).toEqual({
+      label: "1개월",
+      min: 50000,
+      avg: 55000,
+      median: 55000,
+      count: 2,
+    });
 
     const threeMonth = stats.find((s) => s.label === "3개월");
-    expect(threeMonth).toEqual({ label: "3개월", min: 150000, avg: 150000, count: 1 });
+    expect(threeMonth).toEqual({
+      label: "3개월",
+      min: 150000,
+      avg: 150000,
+      median: 150000,
+      count: 1,
+    });
   });
 
   it("승인(approved)되지 않은 가격(pending/rejected)은 제외한다", () => {
@@ -98,7 +112,9 @@ describe("summarizePrices", () => {
       makePrice({ user_id: "u3", label: "1개월", price: 55000, status: "approved" }),
     ];
     const stats = summarizePrices(prices);
-    expect(stats).toEqual([{ label: "1개월", min: 55000, avg: 55000, count: 1 }]);
+    expect(stats).toEqual([
+      { label: "1개월", min: 55000, avg: 55000, median: 55000, count: 1 },
+    ]);
   });
 
   it("같은 유저가 같은 라벨로 중복 제보하면 최신 1건만 반영한다", () => {
@@ -117,7 +133,9 @@ describe("summarizePrices", () => {
       }),
     ];
     const stats = summarizePrices(prices);
-    expect(stats).toEqual([{ label: "1개월", min: 40000, avg: 40000, count: 1 }]);
+    expect(stats).toEqual([
+      { label: "1개월", min: 40000, avg: 40000, median: 40000, count: 1 },
+    ]);
   });
 
   it("PT 횟수권 등 커스텀 라벨도 계산되고, 기본 4항목 뒤에 정렬된다", () => {
@@ -128,5 +146,49 @@ describe("summarizePrices", () => {
     ];
     const stats = summarizePrices(prices);
     expect(stats.map((s) => s.label)).toEqual(["1개월", "12개월", "PT 10회"]);
+  });
+
+  it("중앙값은 극단값에 흔들리는 평균과 달리 가운데 값을 반영한다(홀수 개)", () => {
+    const prices = [
+      makePrice({ user_id: "u1", label: "1개월", price: 10000 }),
+      makePrice({ user_id: "u2", label: "1개월", price: 50000 }),
+      makePrice({ user_id: "u3", label: "1개월", price: 900000 }), // 극단값(허위 제보 등 가정)
+    ];
+    const stats = summarizePrices(prices);
+    const oneMonth = stats.find((s) => s.label === "1개월");
+    expect(oneMonth?.median).toBe(50000);
+    // 평균은 여전히 그대로 유지된다(정책 변경 아님 — 중앙값은 참고용으로만 추가).
+    expect(oneMonth?.avg).toBe(320000);
+  });
+
+  it("짝수 개면 가운데 두 값의 평균(반올림)을 중앙값으로 쓴다", () => {
+    const prices = [
+      makePrice({ user_id: "u1", label: "1개월", price: 10000 }),
+      makePrice({ user_id: "u2", label: "1개월", price: 20000 }),
+      makePrice({ user_id: "u3", label: "1개월", price: 31000 }),
+      makePrice({ user_id: "u4", label: "1개월", price: 40000 }),
+    ];
+    const stats = summarizePrices(prices);
+    expect(stats.find((s) => s.label === "1개월")?.median).toBe(25500);
+  });
+});
+
+describe("isStalePrice", () => {
+  const now = new Date("2026-06-01T00:00:00Z");
+
+  it(`등록된 지 ${STALE_PRICE_DAYS}일이 넘으면 오래된 가격으로 판단한다`, () => {
+    const old = new Date(now);
+    old.setDate(old.getDate() - (STALE_PRICE_DAYS + 1));
+    expect(isStalePrice(old.toISOString(), now)).toBe(true);
+  });
+
+  it(`등록된 지 ${STALE_PRICE_DAYS}일이 안 됐으면 오래된 가격이 아니다`, () => {
+    const recent = new Date(now);
+    recent.setDate(recent.getDate() - (STALE_PRICE_DAYS - 1));
+    expect(isStalePrice(recent.toISOString(), now)).toBe(false);
+  });
+
+  it("날짜를 파싱할 수 없으면 오래된 가격으로 취급하지 않는다(안전한 기본값)", () => {
+    expect(isStalePrice("not-a-date", now)).toBe(false);
   });
 });

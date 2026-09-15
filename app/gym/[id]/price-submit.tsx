@@ -45,8 +45,8 @@ export default function PriceSubmitScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>가격 등록</Text>
       <Text style={styles.hint}>
-        가격을 입력한 항목만 등록됩니다. "+ 가격 항목 추가"로 PT 횟수권 등도 함께
-        등록할 수 있어요.
+        가격을 입력한 항목만 등록됩니다. &ldquo;+ 가격 항목 추가&rdquo;로 PT 횟수권 등도
+        함께 등록할 수 있어요.
       </Text>
       <PriceItemsForm
         submitLabel="등록하기"

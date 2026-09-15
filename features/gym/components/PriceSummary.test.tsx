@@ -42,4 +42,26 @@ describe("PriceSummary", () => {
     // 제보가 1건뿐이면 최저가=평균가라 "500,000원"이 두 칸(최저가/평균가)에 뜬다.
     expect(getAllByText("500,000원")).toHaveLength(2);
   });
+
+  it("평균과 중앙값이 다르면(극단값 존재) 중앙값을 참고용으로 함께 보여준다", async () => {
+    const { getByText } = await render(
+      <PriceSummary
+        prices={[
+          makePrice("1개월", 10000),
+          makePrice("1개월", 50000),
+          makePrice("1개월", 900000),
+        ]}
+      />
+    );
+    // avg = (10000+50000+900000)/3 = 320000, median = 50000 → 서로 다르므로 표시된다.
+    expect(getByText("320,000원")).toBeTruthy();
+    expect(getByText("중앙값 50,000원")).toBeTruthy();
+  });
+
+  it("평균과 중앙값이 같으면 중앙값을 따로 표시하지 않는다", async () => {
+    const { queryByText } = await render(
+      <PriceSummary prices={[makePrice("1개월", 60000), makePrice("1개월", 50000)]} />
+    );
+    expect(queryByText(/중앙값/)).toBeNull();
+  });
 });

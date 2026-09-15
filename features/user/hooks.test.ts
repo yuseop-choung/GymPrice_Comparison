@@ -32,6 +32,8 @@ const USER: User = {
   uid: "user-1",
   email: "tester@example.com",
   nickname: "테스터",
+  is_admin: false,
+  is_suspended: false,
   created_at: "2026-01-01T00:00:00Z",
 };
 

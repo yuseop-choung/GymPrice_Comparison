@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toFriendlyErrorMessage } from "../../lib/api/errors";
+import { recordGymPriceView, type GymPriceViewResult } from "../../lib/api/priceViews";
+import { useAuthStore } from "../../store/authStore";
 import type { GymPrice, MyPriceItem, PriceValues } from "../../types";
 import {
   deletePrice,
@@ -8,6 +11,10 @@ import {
   updatePrice,
 } from "../gym/api";
 import { validatePriceItem } from "./utils";
+
+/** 정지된 계정에게 보여줄 안내 메시지 */
+const SUSPENDED_MESSAGE =
+  "정지된 계정은 이 기능을 사용할 수 없습니다. 문의가 필요하면 관리자에게 연락해주세요.";
 
 /** 가격 항목 등록 입력값 (id, created_at, status 는 서버에서 생성/관리) */
 type PriceItemInput = Omit<GymPrice, "id" | "created_at" | "status">;
@@ -32,6 +39,7 @@ interface UseSubmitPriceResult {
 export function useSubmitPrice({
   onSuccess,
 }: UseSubmitPriceParams = {}): UseSubmitPriceResult {
+  const user = useAuthStore((state) => state.user);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +55,12 @@ export function useSubmitPrice({
         return;
       }
     }
+    // 서버(RLS)도 정지 계정의 등록을 막지만, 여기서 미리 걸러 기술적인 에러
+    // 문구 대신 이해할 수 있는 안내를 바로 보여준다.
+    if (user?.is_suspended) {
+      setError(SUSPENDED_MESSAGE);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -56,7 +70,7 @@ export function useSubmitPrice({
       onSuccess?.(created);
     } catch (e) {
       // 알 수 없는 에러도 사용자에게 메시지로 보여준다.
-      setError(e instanceof Error ? e.message : "가격 등록에 실패했습니다.");
+      setError(toFriendlyErrorMessage(e, "가격 등록에 실패했습니다."));
     } finally {
       setIsLoading(false);
     }
@@ -179,4 +193,59 @@ export function useEditPrice(
   }
 
   return { initial, loadError, error, isBusy, save, remove };
+}
+
+interface UseDetailPriceAccessResult {
+  isChecking: boolean;
+  error: string | null;
+  /** 오늘 한도 초과로 막혔는지 — true면 화면에서 안내 모달을 띄운다 */
+  limitReached: boolean;
+  /** 오늘 남은 무료 열람 가능 헬스장 수 (기여자라 무제한이면 null) */
+  remaining: number | null;
+  /** "다른 기간 가격 보기" 클릭 시 호출 — 열람 가능하면 true(그 뒤 펼치면 됨) */
+  requestAccess: () => Promise<boolean>;
+  dismissLimitModal: () => void;
+}
+
+/**
+ * 헬스장 상세 가격(1개월 외 기간/개별 등록 내역) 열람 접근 훅 (비즈니스 로직 전담)
+ * - 최근 1년 내 승인된 가격을 등록한 유저는 무제한, 그 외에는 하루 3곳까지만
+ *   허용한다(서버가 최종 판정 — record_gym_price_view 참고).
+ * - 한 번 허용되면 이 화면(훅 인스턴스)이 떠 있는 동안은 다시 확인하지 않는다
+ *   (토글을 여닫을 때마다 매번 서버를 부르지 않도록).
+ */
+export function useDetailPriceAccess(gymId: string): UseDetailPriceAccessResult {
+  const [isChecking, setIsChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const grantedRef = useRef(false);
+
+  async function requestAccess(): Promise<boolean> {
+    if (grantedRef.current) return true;
+
+    setIsChecking(true);
+    setError(null);
+    try {
+      const result: GymPriceViewResult = await recordGymPriceView(gymId);
+      setRemaining(result.remaining);
+      if (result.allowed) {
+        grantedRef.current = true;
+        return true;
+      }
+      setLimitReached(true);
+      return false;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "열람 가능 여부를 확인하지 못했습니다.");
+      return false;
+    } finally {
+      setIsChecking(false);
+    }
+  }
+
+  function dismissLimitModal(): void {
+    setLimitReached(false);
+  }
+
+  return { isChecking, error, limitReached, remaining, requestAccess, dismissLimitModal };
 }

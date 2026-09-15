@@ -1,29 +1,44 @@
 // Supabase Edge Function: on-new-price
-// gym_prices INSERT 시 Database Webhook 으로 호출되어, 두 종류의 원격 푸시를 보낸다.
+// gym_prices가 "관리자 승인(approved)" 상태로 바뀔 때 Database Webhook으로 호출되어,
+// 두 종류의 원격 푸시를 보낸다.
 //   1) 해당 헬스장 근처(내 동네)로 설정한 유저 — "내 동네 새 가격"
 //   2) 해당 헬스장이 속한 지역을 관심 지역으로 등록한 유저 중, 이번 가격이
 //      해당 라벨의 기존 승인된 최저가보다 낮을 때만 — "관심 지역 최저가"
 //
+// ⚠️ 핵심 정책: 관리자에게 승인되지 않은(pending/rejected) 가격은 절대 알림
+// 대상이 되지 않는다. 그래서 INSERT가 아니라 "status가 approved로 바뀌는 UPDATE"
+// 시점에만 동작하도록 만들었다 — pending 상태로 등록되는 순간에는 아무 알림도
+// 나가지 않고, 관리자가 승인한 바로 그 순간에만 알림이 나간다.
+//
 // 배포:   supabase functions deploy on-new-price
 // 연결:   Supabase Dashboard → Database → Webhooks
-//         - Table: gym_prices, Events: INSERT
+//         - Table: gym_prices, Events: UPDATE   ⚠️ INSERT가 아니라 UPDATE여야 한다!
 //         - Type: Supabase Edge Function → on-new-price
+//   (기존에 Events: INSERT로 연결돼 있었다면 반드시 UPDATE로 다시 연결해야
+//    이 함수가 의도대로 동작한다 — INSERT로 두면 이 함수는 항상 스킵되어
+//    승인 알림 자체가 전혀 나가지 않는다. 자세한 내용은 README.md 참고.)
 //
 // ⚠️ SERVICE_ROLE 키를 사용하므로 서버(Edge)에서만 실행된다.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 
-interface NewPriceRecord {
+interface PriceRecord {
   id: string;
   gym_id: string;
   user_id: string;
   label: string;
   price: number;
+  status: "pending" | "approved" | "rejected";
 }
 
 interface WebhookPayload {
   type: "INSERT" | "UPDATE" | "DELETE";
-  record: NewPriceRecord | null;
+  record: PriceRecord | null;
+  // UPDATE 이벤트에서만 내려온다 (INSERT/DELETE에는 없음).
+  old_record?: PriceRecord | null;
 }
 
 interface Gym {
@@ -43,6 +58,10 @@ interface PushMessage {
 // 알림 대상 반경 (km)
 const NOTIFY_RADIUS_KM = 3;
 
+// Expo 푸시 토큰 형식(예: "ExponentPushToken[xxxxxxxx]"). 형식이 다른 값을
+// Expo Push API에 보내면 거부당하므로 미리 걸러 불필요한 호출을 줄인다.
+const EXPO_PUSH_TOKEN_PATTERN = /^Expo(nent)?PushToken\[.+\]$/;
+
 /** 두 좌표 사이 거리(km) — Haversine */
 function distanceKm(
   lat1: number,
@@ -60,8 +79,25 @@ function distanceKm(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// deno-lint-ignore no-explicit-any
-type SupabaseClient = any;
+/** approved로 새로 전환된(pending/rejected → approved) UPDATE 페이로드로 좁혀진 타입 */
+interface ApprovalTransitionPayload {
+  type: "UPDATE";
+  record: PriceRecord;
+  old_record: PriceRecord;
+}
+
+/** 이번 UPDATE가 "관리자 승인으로 새로 전환"된 경우인지 (pending/rejected → approved) */
+function isApprovalTransition(
+  payload: WebhookPayload
+): payload is WebhookPayload & ApprovalTransitionPayload {
+  return (
+    payload.type === "UPDATE" &&
+    payload.record !== null &&
+    payload.old_record != null &&
+    payload.old_record.status !== "approved" &&
+    payload.record.status === "approved"
+  );
+}
 
 /** 헬스장 근처(반경 NOTIFY_RADIUS_KM)로 내 동네를 설정한 유저 id 목록 */
 async function findNearbyUserIds(
@@ -90,17 +126,23 @@ async function findNearbyUserIds(
     .map((u: { uid: string }) => u.uid);
 }
 
-/** 이번 가격이 해당 헬스장·라벨의 기존 승인된 가격 중 최저가보다 낮은(=새 최저가) 지 여부 */
+/**
+ * 이번에 승인된 가격이 해당 헬스장·라벨의 "다른" 승인된 가격들 중 최저가보다
+ * 낮은(=새 최저가) 지 여부. 이번 건 자기 자신은 비교 대상에서 제외한다
+ * (이미 status='approved'로 커밋된 뒤 호출되므로, 제외하지 않으면 항상 자기
+ * 자신이 포함된 최소값과 비교하게 되어 부등호가 성립하지 않는다).
+ */
 async function isNewLowestPrice(
   supabase: SupabaseClient,
-  record: NewPriceRecord
+  record: PriceRecord
 ): Promise<boolean> {
   const { data: approved } = await supabase
     .from("gym_prices")
     .select("price")
     .eq("gym_id", record.gym_id)
     .eq("label", record.label)
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .neq("id", record.id);
 
   const currentMin = (approved ?? []).reduce(
     (min: number | null, row: { price: number }) =>
@@ -130,7 +172,7 @@ async function findInterestRegionUserIds(
   return [...new Set(matched.map((r: { user_id: string }) => r.user_id))];
 }
 
-/** 대상 유저 id들의 기기 토큰으로 동일 내용 푸시 메시지를 만든다 */
+/** 대상 유저 id들의 기기 토큰으로 동일 내용 푸시 메시지를 만든다 (형식이 이상한 토큰은 제외) */
 async function buildMessages(
   supabase: SupabaseClient,
   userIds: string[],
@@ -143,20 +185,27 @@ async function buildMessages(
     .select("token")
     .in("user_id", userIds);
 
-  return (tokenRows ?? []).map((t: { token: string }) => ({
-    to: t.token,
-    title,
-    body,
-    sound: "default" as const,
-  }));
+  return (tokenRows ?? [])
+    .map((t: { token: string }) => t.token)
+    .filter((token: string) => EXPO_PUSH_TOKEN_PATTERN.test(token))
+    .map((token: string) => ({
+      to: token,
+      title,
+      body,
+      sound: "default" as const,
+    }));
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
   try {
-    const { type, record }: WebhookPayload = await req.json();
-    if (type !== "INSERT" || !record) {
+    const payload: WebhookPayload = await req.json();
+
+    // pending으로 등록되는 INSERT, 승인이 아닌 다른 UPDATE(거절/되돌리기 등),
+    // DELETE는 전부 스킵한다 — 알림은 오직 "새로 승인된" 순간에만 나간다.
+    if (!isApprovalTransition(payload)) {
       return json({ skipped: true });
     }
+    const record = payload.record;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -208,8 +257,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       interestRegion: interestMessages.length,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "unknown error";
-    return json({ error: message }, 500);
+    // 서버 로그에는 전체 에러를 남기고(운영 추적용), 응답 바디에는 내부 구현
+    // 세부사항(쿼리 오류 메시지 등)이 그대로 노출되지 않도록 일반화된 메시지만 담는다.
+    console.error("[on-new-price] failed:", e);
+    return json({ error: "internal error" }, 500);
   }
 });
 

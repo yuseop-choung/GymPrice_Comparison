@@ -9,6 +9,11 @@ export interface User {
   uid: string;
   email: string;
   nickname: string;
+  /** 관리자 여부 — 앱 안에는 관리자 지정 UI가 없고 조회 전용(관리자 페이지는 별도) */
+  is_admin: boolean;
+  /** 정지 여부 — 정지되면 헬스장/가격/부가정보 등록·수정이 서버(RLS)에서 막힌다.
+   *  클라이언트는 이 값으로 등록 전에 미리 안내 메시지를 보여줄 수 있다. */
+  is_suspended: boolean;
   created_at: string;
 }
 
