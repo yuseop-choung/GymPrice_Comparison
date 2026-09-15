@@ -58,6 +58,26 @@ window.GymPriceAdmin = (function () {
     return new Date(iso).toISOString().slice(0, 10);
   }
 
+  /** 페이지 간 이동 내비게이션 (넓은 화면: 우측 고정 사이드바 / 좁은 화면: 상단 가로 탭) */
+  var NAV_ITEMS = [
+    { key: "index", href: "index.html", label: "가격 심사" },
+    { key: "dashboard", href: "dashboard.html", label: "퍼널 대시보드" },
+    { key: "manage", href: "manage.html", label: "유저/헬스장 관리" }
+  ];
+  function renderNav(activeKey) {
+    return (
+      '<nav class="side-nav">' +
+      NAV_ITEMS.map(function (item) {
+        return (
+          '<a href="' + item.href + '"' + (item.key === activeKey ? ' class="active"' : "") + ">" +
+          item.label +
+          "</a>"
+        );
+      }).join("") +
+      "</nav>"
+    );
+  }
+
   /**
    * 설정(Supabase URL/key) → 로그인 → 관리자(is_admin) 확인까지 처리하고,
    * 통과하면 onReady(sb, currentUser, renderLogin)를 호출한다.
@@ -209,6 +229,7 @@ window.GymPriceAdmin = (function () {
     fmtPrice: fmtPrice,
     fmtDate: fmtDate,
     toDayKey: toDayKey,
+    renderNav: renderNav,
     boot: boot
   };
 })();
