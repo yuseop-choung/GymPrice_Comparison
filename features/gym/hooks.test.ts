@@ -1,8 +1,19 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { useAuthStore } from "../../store/authStore";
 import type { Gym, GymDetail, GymWithPrice, User } from "../../types";
-import { getGymDetail, getNearbyGyms, registerGym, saveGymDetail } from "./api";
-import { useEditGymDetail, useNearbyGyms, useRegisterGym } from "./hooks";
+import {
+  getGymDetail,
+  getNearbyGyms,
+  registerGym,
+  saveGymDetail,
+  searchGyms,
+} from "./api";
+import {
+  useEditGymDetail,
+  useNearbyGyms,
+  useRegisterGym,
+  useSearchGyms,
+} from "./hooks";
 
 // api 모듈을 목으로 대체 (실제 supabase 로드 방지)
 jest.mock("./api", () => ({
@@ -11,6 +22,7 @@ jest.mock("./api", () => ({
   getNearbyGyms: jest.fn(),
   getGymWithPrices: jest.fn(),
   registerGym: jest.fn(),
+  searchGyms: jest.fn(),
 }));
 
 // useAuthStore가 내부적으로 로드하는 lib/api/auth → lib/supabase가 테스트 환경(.env
@@ -24,6 +36,7 @@ const getGymDetailMock = getGymDetail as jest.Mock;
 const saveGymDetailMock = saveGymDetail as jest.Mock;
 const getNearbyGymsMock = getNearbyGyms as jest.Mock;
 const registerGymMock = registerGym as jest.Mock;
+const searchGymsMock = searchGyms as jest.Mock;
 
 const DETAIL: GymDetail = {
   id: "d1",
@@ -170,6 +183,76 @@ describe("useRegisterGym", () => {
 
     expect(registerGymMock).not.toHaveBeenCalled();
     expect(result.current.error).toContain("정지된 계정");
+  });
+});
+
+describe("useSearchGyms", () => {
+  beforeEach(() => {
+    searchGymsMock.mockReset();
+  });
+
+  it("검색어가 비어있으면 API를 호출하지 않고 결과를 비운다", async () => {
+    const { result } = await renderHook(() => useSearchGyms());
+
+    await act(async () => {
+      await result.current.search("  ");
+    });
+
+    expect(searchGymsMock).not.toHaveBeenCalled();
+    expect(result.current.results).toEqual([]);
+    expect(result.current.hasSearched).toBe(false);
+  });
+
+  it("검색에 성공하면 결과를 채우고 hasSearched를 true로 바꾼다", async () => {
+    const found: Gym = {
+      id: "g1",
+      name: "강철짐",
+      address: "서울 강남구",
+      lat: 37.5,
+      lng: 127.0,
+      phone: null,
+      created_at: "2026-01-01T00:00:00Z",
+    };
+    searchGymsMock.mockResolvedValue([found]);
+
+    const { result } = await renderHook(() => useSearchGyms());
+    await act(async () => {
+      await result.current.search("강철짐");
+    });
+
+    expect(searchGymsMock).toHaveBeenCalledWith("강철짐");
+    expect(result.current.results).toEqual([found]);
+    expect(result.current.hasSearched).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("검색 실패 시 에러 메시지를 채우고 hasSearched도 true가 된다", async () => {
+    searchGymsMock.mockRejectedValue(new Error("네트워크 오류"));
+
+    const { result } = await renderHook(() => useSearchGyms());
+    await act(async () => {
+      await result.current.search("강철짐");
+    });
+
+    expect(result.current.error).toBe("네트워크 오류");
+    expect(result.current.hasSearched).toBe(true);
+  });
+
+  it("reset()을 호출하면 결과/에러/hasSearched를 모두 초기화한다", async () => {
+    searchGymsMock.mockResolvedValue([]);
+    const { result } = await renderHook(() => useSearchGyms());
+    await act(async () => {
+      await result.current.search("강철짐");
+    });
+    expect(result.current.hasSearched).toBe(true);
+
+    await act(async () => {
+      result.current.reset();
+    });
+
+    expect(result.current.results).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.hasSearched).toBe(false);
   });
 });
 

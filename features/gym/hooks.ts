@@ -14,6 +14,7 @@ import {
   getNearbyGyms,
   registerGym,
   saveGymDetail,
+  searchGyms,
 } from "./api";
 
 /** 정지된 계정에게 보여줄 안내 메시지 (등록/수정 시도 전에 미리 막을 때 공용으로 쓴다) */
@@ -115,6 +116,54 @@ export function useNearbyGyms(
   }, [fetchGyms]);
 
   return { gyms, isLoading, error, refetch: fetchGyms };
+}
+
+interface UseSearchGymsResult {
+  results: Gym[];
+  isSearching: boolean;
+  /** 검색을 한 번이라도 실행했는지 — "결과 없음" 문구를 검색 전과 구분해서 보여줄 때 쓴다 */
+  hasSearched: boolean;
+  error: string | null;
+  search: (keyword: string) => Promise<void>;
+  reset: () => void;
+}
+
+/**
+ * 등록된 헬스장 검색 훅 (비즈니스 로직 전담)
+ * - "가격만 등록" 모드에서 대상 헬스장을 이름으로 찾을 때 쓴다. 헬스장 등록 화면의
+ *   카카오 장소 검색(useGymSearch)과 달리 우리 DB에 이미 등록된 헬스장만 대상으로 한다.
+ */
+export function useSearchGyms(): UseSearchGymsResult {
+  const [results, setResults] = useState<Gym[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function search(keyword: string): Promise<void> {
+    if (keyword.trim() === "") {
+      setResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+    try {
+      setResults(await searchGyms(keyword));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "헬스장 검색에 실패했습니다.");
+    } finally {
+      setIsSearching(false);
+      setHasSearched(true);
+    }
+  }
+
+  function reset(): void {
+    setResults([]);
+    setError(null);
+    setHasSearched(false);
+  }
+
+  return { results, isSearching, hasSearched, error, search, reset };
 }
 
 /** 헬스장 등록 입력값 (id, created_at 은 서버에서 생성) */

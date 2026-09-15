@@ -177,6 +177,13 @@ export function deletePriceMock(priceId: string): Promise<void> {
   return delay(undefined);
 }
 
+/** 이름으로 이미 등록된 헬스장 검색 목(mock) — api.ts의 searchGyms와 동일한 대소문자 무시 부분일치 */
+export function searchGymsMock(keyword: string): Promise<Gym[]> {
+  const q = keyword.trim().toLowerCase();
+  if (q === "") return delay([]);
+  return delay(MOCK_GYMS.filter((g) => g.name.toLowerCase().includes(q)));
+}
+
 export function registerGymMock(
   data: Omit<Gym, "id" | "created_at">
 ): Promise<Gym> {
