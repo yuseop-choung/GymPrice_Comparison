@@ -99,20 +99,26 @@
           if (u.is_admin) badges += '<span class="status-badge status-approved">관리자</span> ';
           if (u.is_suspended) badges += '<span class="status-badge status-rejected">정지됨</span>';
           if (!badges) badges = '<span class="cell-muted">-</span>';
+          // 관리자는 자기 자신을 정지시키거나 자기 권한을 해제할 수 없다
+          // (DB 트리거로도 막혀있지만, 헷갈리지 않게 버튼 자체를 안 보여준다).
+          var actionsHtml = isSelf
+            ? '<span class="cell-muted">본인 계정은 여기서 변경할 수 없어요</span>'
+            : (
+                '  <button class="' + (u.is_admin ? "btn-reject" : "btn-approve") + '" data-toggle-admin="' + u.uid + '" data-next="' + (!u.is_admin) + '">' +
+                (u.is_admin ? "권한 해제" : "관리자로 지정") +
+                "</button>" +
+                '  <button class="' + (u.is_suspended ? "btn-approve" : "btn-reject") + '" data-toggle-suspend="' + u.uid + '" data-next="' + (!u.is_suspended) + '">' +
+                (u.is_suspended ? "정지 해제" : "정지") +
+                "</button>"
+              );
+
           return (
             "<tr>" +
             "<td>" + G.escapeHtml(u.nickname || "(닉네임 없음)") + (isSelf ? ' <span class="cell-muted">(나)</span>' : "") + "</td>" +
             "<td>" + G.escapeHtml(u.email) + "</td>" +
             '<td class="cell-muted">' + G.fmtDate(u.created_at) + "</td>" +
             "<td>" + badges + "</td>" +
-            '<td><div class="cell-actions">' +
-            '  <button class="' + (u.is_admin ? "btn-reject" : "btn-approve") + '" data-toggle-admin="' + u.uid + '" data-next="' + (!u.is_admin) + '">' +
-            (u.is_admin ? "권한 해제" : "관리자로 지정") +
-            "</button>" +
-            '  <button class="' + (u.is_suspended ? "btn-approve" : "btn-reject") + '" data-toggle-suspend="' + u.uid + '" data-next="' + (!u.is_suspended) + '">' +
-            (u.is_suspended ? "정지 해제" : "정지") +
-            "</button>" +
-            "</div></td>" +
+            '<td><div class="cell-actions">' + actionsHtml + "</div></td>" +
             "</tr>"
           );
         })

@@ -165,42 +165,54 @@ $$;
 -- users
 -- ⚠️ email/home_lat/home_lng(위치기반 알림용 좌표)가 담겨 있어 본인만 조회 가능해야 한다.
 --    (과거 users_select_all(누구나 조회)는 개인정보 노출 위험이 있어 제거했다.)
+-- ⚠️ 이 스크립트는 몇 번을 다시 실행해도 안전하도록, 모든 create policy 앞에
+--    drop policy if exists를 붙인다(안 붙이면 이미 있는 정책과 이름이 겹쳐 에러가
+--    나고, SQL Editor는 스크립트 전체를 한 트랜잭션으로 실행하기 때문에 앞서
+--    성공한 create table 등도 전부 롤백된다).
 drop policy if exists "users_select_all" on public.users;
+drop policy if exists "users_select_self" on public.users;
 create policy "users_select_self" on public.users for select to authenticated
   using (auth.uid() = uid);
 -- 관리자는 가격 심사 화면에서 제보자 닉네임을 봐야 하므로 전체 조회를 허용한다
 -- (is_admin=true인 계정만 해당 — 일반 유저는 여전히 본인만 조회 가능).
+drop policy if exists "users_select_admin" on public.users;
 create policy "users_select_admin" on public.users for select to authenticated
   using (public.is_admin());
+drop policy if exists "users_update_self" on public.users;
 create policy "users_update_self" on public.users for update to authenticated
   using (auth.uid() = uid) with check (auth.uid() = uid);
 -- 관리자는 다른 유저의 관리자 권한을 부여/해제할 수 있어야 한다(관리자 페이지의
 -- "유저 관리" 기능). is_admin 외 다른 필드(닉네임/이메일/위치)는 아래 트리거가
 -- 관리자가 "타인의" 행을 건드릴 때만 원래 값으로 되돌려 막는다.
+drop policy if exists "users_update_admin" on public.users;
 create policy "users_update_admin" on public.users for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "users_delete_self" on public.users;
 create policy "users_delete_self" on public.users for delete to authenticated
   using (auth.uid() = uid);
 -- (INSERT는 아래 트리거가 SECURITY DEFINER로 처리하므로 정책 불필요)
 -- (on-new-price 등 Edge Function은 SERVICE_ROLE 키로 동작해 RLS를 우회하므로 영향 없음)
 
 -- ⚠️ users_update_self는 "본인 행인가"만 검사할 뿐, 본인이 스스로 is_admin/
--- is_suspended를 바꿔 셀프 승격하거나 정지를 풀어버리는 것까지는 막지 못한다.
--- 관리자가 아닌 호출자는 이 두 컬럼을 절대 바꿀 수 없게, 관리자가 "타인의" 행을
--- 수정할 때는 is_admin/is_suspended 외 다른 필드를 못 바꾸게(사생활 보호) 트리거로 강제한다.
+-- is_suspended를 바꾸는 것까지는 막지 못한다. is_admin/is_suspended는 오직
+-- "관리자가 타인의 행을 수정하는 경우"에만 바뀔 수 있다:
+--   - 비관리자의 자기 수정, 관리자의 자기 수정(자기 자신을 정지/권한 해제하는 것 포함)
+--     → 항상 원래 값으로 되돌림 (셀프 승격 방지 + 관리자의 셀프 강등/셀프 정지 방지)
+--   - 관리자가 타인의 행을 수정 → is_admin/is_suspended는 통과, 나머지 필드
+--     (닉네임/이메일/위치)는 원래 값으로 되돌림 (사생활 보호)
 create or replace function public.enforce_users_update_rules()
 returns trigger
 language plpgsql
 as $$
 begin
-  if not public.is_admin() then
-    new.is_admin := old.is_admin;
-    new.is_suspended := old.is_suspended;
-  elsif auth.uid() <> old.uid then
+  if public.is_admin() and auth.uid() <> old.uid then
     new.email := old.email;
     new.nickname := old.nickname;
     new.home_lat := old.home_lat;
     new.home_lng := old.home_lng;
+  else
+    new.is_admin := old.is_admin;
+    new.is_suspended := old.is_suspended;
   end if;
   return new;
 end;
@@ -213,16 +225,20 @@ create trigger on_users_update
 
 -- gyms (작성자 컬럼이 없어 일반 유저 수정/삭제는 미제공 → RLS로 자동 차단.
 --       수정(오타 정정)/삭제는 관리자만 가능)
+drop policy if exists "gyms_select_all" on public.gyms;
 create policy "gyms_select_all"  on public.gyms for select using (true);
 -- 정지된 계정은 새 헬스장을 등록할 수 없다(도배 방지).
+drop policy if exists "gyms_insert_auth" on public.gyms;
 create policy "gyms_insert_auth" on public.gyms for insert to authenticated
   with check (not public.is_suspended());
+drop policy if exists "gyms_update_admin" on public.gyms;
 create policy "gyms_update_admin" on public.gyms for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
 -- 관리자 전용 정책이라 컬럼 권한을 따로 제한하지 않아도 안전하지만, 관리자 페이지가
 -- 실제로 수정하는 건 이름/주소/전화번호뿐이라 우선 그 범위만 열어둔다.
 revoke update on public.gyms from authenticated;
 grant update (name, address, phone) on public.gyms to authenticated;
+drop policy if exists "gyms_delete_admin" on public.gyms;
 create policy "gyms_delete_admin" on public.gyms for delete to authenticated
   using (public.is_admin());
 
@@ -230,6 +246,7 @@ create policy "gyms_delete_admin" on public.gyms for delete to authenticated
 -- SELECT: 승인(approved)된 가격은 누구나, 본인 가격은 심사 상태와 무관하게 본인만,
 --         관리자는 전부(심사용) 조회 가능.
 drop policy if exists "gym_prices_select_all" on public.gym_prices;
+drop policy if exists "gym_prices_select_approved_or_own_or_admin" on public.gym_prices;
 create policy "gym_prices_select_approved_or_own_or_admin" on public.gym_prices
   for select
   using (
@@ -240,19 +257,23 @@ create policy "gym_prices_select_approved_or_own_or_admin" on public.gym_prices
 
 -- INSERT: 본인 명의로만, 정지되지 않은 계정만 등록 가능 (컬럼 권한으로 status는
 -- 직접 못 넣게 막아 항상 기본값 'pending'으로 시작하게 한다 — 아래 grant insert 참고)
+drop policy if exists "gym_prices_insert_auth" on public.gym_prices;
 create policy "gym_prices_insert_auth"  on public.gym_prices for insert to authenticated
   with check (auth.uid() = user_id and not public.is_suspended());
 
 -- UPDATE: 본인 또는 관리자만. "본인은 가격만/관리자는 status만" 세부 규칙은
 -- 아래 enforce_gym_price_update_rules 트리거가 강제한다.
 drop policy if exists "gym_prices_update_owner" on public.gym_prices;
+drop policy if exists "gym_prices_update_owner_or_admin" on public.gym_prices;
 create policy "gym_prices_update_owner_or_admin" on public.gym_prices for update to authenticated
   using (auth.uid() = user_id or public.is_admin())
   with check (auth.uid() = user_id or public.is_admin());
 
+drop policy if exists "gym_prices_delete_owner" on public.gym_prices;
 create policy "gym_prices_delete_owner" on public.gym_prices for delete to authenticated
   using (auth.uid() = user_id);
 -- 관리자는 문제가 되는 제보를 직접 삭제할 수도 있다(거절 상태로 남기는 대신 완전 제거).
+drop policy if exists "gym_prices_delete_admin" on public.gym_prices;
 create policy "gym_prices_delete_admin" on public.gym_prices for delete to authenticated
   using (public.is_admin());
 
@@ -305,25 +326,34 @@ create trigger on_gym_price_update
 
 -- gym_details (한 헬스장당 1건 — 로그인 + 정지되지 않은 유저는 누구나 추가/수정 가능한
 -- 크라우드소싱 정보)
+drop policy if exists "gym_details_select_all" on public.gym_details;
 create policy "gym_details_select_all"  on public.gym_details for select using (true);
+drop policy if exists "gym_details_insert_auth" on public.gym_details;
 create policy "gym_details_insert_auth" on public.gym_details for insert to authenticated
   with check (not public.is_suspended());
+drop policy if exists "gym_details_update_auth" on public.gym_details;
 create policy "gym_details_update_auth" on public.gym_details for update to authenticated
   using (true) with check (not public.is_suspended());
 
 -- push_tokens (본인 토큰만 관리, 조회도 본인 것만)
+drop policy if exists "push_tokens_select_self" on public.push_tokens;
 create policy "push_tokens_select_self" on public.push_tokens for select to authenticated
   using (auth.uid() = user_id);
+drop policy if exists "push_tokens_insert_self" on public.push_tokens;
 create policy "push_tokens_insert_self" on public.push_tokens for insert to authenticated
   with check (auth.uid() = user_id);
+drop policy if exists "push_tokens_update_self" on public.push_tokens;
 create policy "push_tokens_update_self" on public.push_tokens for update to authenticated
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "push_tokens_delete_self" on public.push_tokens;
 create policy "push_tokens_delete_self" on public.push_tokens for delete to authenticated
   using (auth.uid() = user_id);
 
 -- app_events (본인 명의로만 기록 가능. 조회는 관리자만 — 개인 행동 로그이기 때문)
+drop policy if exists "app_events_insert_self" on public.app_events;
 create policy "app_events_insert_self" on public.app_events for insert to authenticated
   with check (auth.uid() = user_id);
+drop policy if exists "app_events_select_admin" on public.app_events;
 create policy "app_events_select_admin" on public.app_events for select to authenticated
   using (public.is_admin());
 
