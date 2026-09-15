@@ -5,12 +5,14 @@ import { Button } from "../../../components/ui/Button";
 import { StateView } from "../../../components/ui/StateView";
 import { colors } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
+import { useTrackGymView } from "../../../features/analytics/hooks";
 import { GymActions } from "../../../features/gym/components/GymActions";
 import { GymDetailInfo } from "../../../features/gym/components/GymDetailInfo";
 import { PriceSummary } from "../../../features/gym/components/PriceSummary";
 import { useGymDetail } from "../../../features/gym/hooks";
 import { distanceKm, formatDistance } from "../../../features/gym/utils";
 import { useLocation } from "../../../hooks/useLocation";
+import { useAuthStore } from "../../../store/authStore";
 
 /**
  * 헬스장 상세 화면 — UI 전담, 데이터 조회는 useGymDetail 훅에 위임
@@ -22,6 +24,8 @@ export default function GymDetailScreen() {
   const router = useRouter();
   const { data, isLoading, error, refetch } = useGymDetail(gymId);
   const { coords } = useLocation();
+  const user = useAuthStore((state) => state.user);
+  useTrackGymView(user?.uid, gymId); // 관리자 대시보드 "오늘 조회" 지표용
 
   // 화면 복귀 시 최신화 (가격/부가정보 수정 반영)
   useFocusEffect(

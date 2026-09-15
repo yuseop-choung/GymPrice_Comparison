@@ -1,6 +1,7 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useTrackAppOpen } from "../features/analytics/hooks";
 import { usePushRegistration } from "../features/notifications/hooks";
 import { useAuthStore } from "../store/authStore";
 import { useOnboardingStore } from "../store/onboardingStore";
@@ -20,6 +21,7 @@ export default function RootLayout() {
   const router = useRouter();
 
   usePushRegistration(); // 로그인 시 푸시 토큰 등록
+  useTrackAppOpen(user?.uid); // 관리자 대시보드 "오늘 접속" 지표용
 
   useEffect(() => {
     initialize();

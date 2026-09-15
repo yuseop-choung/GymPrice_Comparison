@@ -22,6 +22,10 @@ alter table public.users add column if not exists home_lng double precision;
 -- 최초 관리자는 SQL Editor에서 직접 켜야 한다:
 --   update public.users set is_admin = true where email = '본인 이메일';
 alter table public.users add column if not exists is_admin boolean not null default false;
+-- 정지 여부 (도배/허위 제보 등으로 악용하는 계정을 막기 위함). 정지된 계정은
+-- 로그인 자체는 되지만(로그인 차단은 SERVICE_ROLE이 필요해 클라이언트 전용
+-- 관리자 페이지에서 못 함) 헬스장/가격/부가정보 등록이 전부 막힌다.
+alter table public.users add column if not exists is_suspended boolean not null default false;
 
 create table if not exists public.gyms (
   id         uuid        primary key default gen_random_uuid(),
@@ -103,6 +107,28 @@ create table if not exists public.push_tokens (
   created_at timestamptz not null default now()
 );
 
+-- 앱 사용 이벤트(접속/조회) 기록 — 관리자 대시보드의 "오늘 접속/조회" 지표용.
+-- 유저 개인의 행동 로그라 조회는 관리자만 가능하다.
+create table if not exists public.app_events (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null references public.users(uid) on delete cascade,
+  event_type text        not null,
+  gym_id     uuid        references public.gyms(id) on delete set null, -- gym_view일 때만
+  created_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'app_events_event_type_check'
+  ) then
+    alter table public.app_events
+      add constraint app_events_event_type_check check (event_type in ('app_open', 'gym_view'));
+  end if;
+end $$;
+
+create index if not exists app_events_created_at_idx on public.app_events (created_at);
+
 -- ----------------------------------------------------------------
 -- 2) RLS 활성화
 -- ----------------------------------------------------------------
@@ -111,6 +137,7 @@ alter table public.gyms        enable row level security;
 alter table public.gym_prices  enable row level security;
 alter table public.gym_details enable row level security;
 alter table public.push_tokens enable row level security;
+alter table public.app_events  enable row level security;
 
 -- 호출한 유저가 관리자인지 확인하는 헬퍼.
 -- (자기 자신의 uid로만 조회하므로 users_select_self 정책 범위 안에서 안전하게 동작한다.)
@@ -120,6 +147,15 @@ language sql
 stable
 as $$
   select coalesce((select is_admin from public.users where uid = auth.uid()), false);
+$$;
+
+-- 호출한 유저가 정지 상태인지 확인하는 헬퍼 (등록류 INSERT 정책에서 사용).
+create or replace function public.is_suspended()
+returns boolean
+language sql
+stable
+as $$
+  select coalesce((select is_suspended from public.users where uid = auth.uid()), false);
 $$;
 
 -- ----------------------------------------------------------------
@@ -148,10 +184,10 @@ create policy "users_delete_self" on public.users for delete to authenticated
 -- (INSERT는 아래 트리거가 SECURITY DEFINER로 처리하므로 정책 불필요)
 -- (on-new-price 등 Edge Function은 SERVICE_ROLE 키로 동작해 RLS를 우회하므로 영향 없음)
 
--- ⚠️ users_update_self는 "본인 행인가"만 검사할 뿐, 본인이 스스로 is_admin을
--- true로 바꿔 셀프 승격하는 것까지는 막지 못한다. 관리자가 아닌 호출자는 is_admin을
--- 절대 바꿀 수 없게, 관리자가 "타인의" 행을 수정할 때는 is_admin 외 다른 필드를
--- 못 바꾸게(사생활 보호) 트리거로 강제한다.
+-- ⚠️ users_update_self는 "본인 행인가"만 검사할 뿐, 본인이 스스로 is_admin/
+-- is_suspended를 바꿔 셀프 승격하거나 정지를 풀어버리는 것까지는 막지 못한다.
+-- 관리자가 아닌 호출자는 이 두 컬럼을 절대 바꿀 수 없게, 관리자가 "타인의" 행을
+-- 수정할 때는 is_admin/is_suspended 외 다른 필드를 못 바꾸게(사생활 보호) 트리거로 강제한다.
 create or replace function public.enforce_users_update_rules()
 returns trigger
 language plpgsql
@@ -159,6 +195,7 @@ as $$
 begin
   if not public.is_admin() then
     new.is_admin := old.is_admin;
+    new.is_suspended := old.is_suspended;
   elsif auth.uid() <> old.uid then
     new.email := old.email;
     new.nickname := old.nickname;
@@ -177,7 +214,9 @@ create trigger on_users_update
 -- gyms (작성자 컬럼이 없어 일반 유저 수정/삭제는 미제공 → RLS로 자동 차단.
 --       수정(오타 정정)/삭제는 관리자만 가능)
 create policy "gyms_select_all"  on public.gyms for select using (true);
-create policy "gyms_insert_auth" on public.gyms for insert to authenticated with check (true);
+-- 정지된 계정은 새 헬스장을 등록할 수 없다(도배 방지).
+create policy "gyms_insert_auth" on public.gyms for insert to authenticated
+  with check (not public.is_suspended());
 create policy "gyms_update_admin" on public.gyms for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
 -- 관리자 전용 정책이라 컬럼 권한을 따로 제한하지 않아도 안전하지만, 관리자 페이지가
@@ -199,10 +238,10 @@ create policy "gym_prices_select_approved_or_own_or_admin" on public.gym_prices
     or public.is_admin()
   );
 
--- INSERT: 본인 명의로만 등록 가능 (컬럼 권한으로 status는 직접 못 넣게 막아 항상
--- 기본값 'pending'으로 시작하게 한다 — 아래 grant insert 참고)
+-- INSERT: 본인 명의로만, 정지되지 않은 계정만 등록 가능 (컬럼 권한으로 status는
+-- 직접 못 넣게 막아 항상 기본값 'pending'으로 시작하게 한다 — 아래 grant insert 참고)
 create policy "gym_prices_insert_auth"  on public.gym_prices for insert to authenticated
-  with check (auth.uid() = user_id);
+  with check (auth.uid() = user_id and not public.is_suspended());
 
 -- UPDATE: 본인 또는 관리자만. "본인은 가격만/관리자는 status만" 세부 규칙은
 -- 아래 enforce_gym_price_update_rules 트리거가 강제한다.
@@ -264,11 +303,13 @@ create trigger on_gym_price_update
   before update on public.gym_prices
   for each row execute function public.enforce_gym_price_update_rules();
 
--- gym_details (한 헬스장당 1건 — 로그인 유저 누구나 추가/수정 가능한 크라우드소싱 정보)
+-- gym_details (한 헬스장당 1건 — 로그인 + 정지되지 않은 유저는 누구나 추가/수정 가능한
+-- 크라우드소싱 정보)
 create policy "gym_details_select_all"  on public.gym_details for select using (true);
-create policy "gym_details_insert_auth" on public.gym_details for insert to authenticated with check (true);
+create policy "gym_details_insert_auth" on public.gym_details for insert to authenticated
+  with check (not public.is_suspended());
 create policy "gym_details_update_auth" on public.gym_details for update to authenticated
-  using (true) with check (true);
+  using (true) with check (not public.is_suspended());
 
 -- push_tokens (본인 토큰만 관리, 조회도 본인 것만)
 create policy "push_tokens_select_self" on public.push_tokens for select to authenticated
@@ -279,6 +320,12 @@ create policy "push_tokens_update_self" on public.push_tokens for update to auth
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "push_tokens_delete_self" on public.push_tokens for delete to authenticated
   using (auth.uid() = user_id);
+
+-- app_events (본인 명의로만 기록 가능. 조회는 관리자만 — 개인 행동 로그이기 때문)
+create policy "app_events_insert_self" on public.app_events for insert to authenticated
+  with check (auth.uid() = user_id);
+create policy "app_events_select_admin" on public.app_events for select to authenticated
+  using (public.is_admin());
 
 -- ----------------------------------------------------------------
 -- 4) 회원가입 시 public.users 프로필 자동 생성 트리거
