@@ -16,6 +16,8 @@ interface PriceOnlyGymPickerProps {
   error: string | null;
   results: Gym[];
   onSelect: (gym: Gym) => void;
+  /** 검색 결과가 없을 때 "헬스장 등록"으로 바로 넘어가도록 유도하는 버튼의 콜백 */
+  onRegisterNew: () => void;
 }
 
 /**
@@ -32,6 +34,7 @@ export function PriceOnlyGymPicker({
   error,
   results,
   onSelect,
+  onRegisterNew,
 }: PriceOnlyGymPickerProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -50,10 +53,13 @@ export function PriceOnlyGymPicker({
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {!error && hasSearched && !isSearching && results.length === 0 ? (
-        <Text style={styles.empty}>
-          검색 결과가 없어요. 이름을 다시 확인하거나, 없는 헬스장이면 &ldquo;헬스장
-          등록&rdquo; 탭에서 새로 등록해주세요.
-        </Text>
+        <View style={styles.emptyBox}>
+          <Text style={styles.empty}>
+            검색 결과가 없어요. 이름을 다시 확인하거나, 아직 등록되지 않은
+            헬스장이면 새로 등록해보세요.
+          </Text>
+          <Button title="새 헬스장으로 등록하기" onPress={onRegisterNew} />
+        </View>
       ) : null}
 
       {results.map((gym) => (
@@ -75,10 +81,13 @@ function createStyles(colors: ColorTheme) {
       fontSize: fontSize.sm,
       color: colors.error,
     },
+    emptyBox: {
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
     empty: {
       fontSize: fontSize.sm,
       color: colors.textSecondary,
-      marginTop: spacing.sm,
     },
     row: {
       paddingVertical: spacing.md,

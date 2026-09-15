@@ -12,6 +12,11 @@ import { useRegisterGym } from "../hooks";
 import { useGymSearch } from "../useGymSearch";
 import { GymSearchBox } from "./GymSearchBox";
 
+interface GymRegisterFormProps {
+  /** 가격 등록 탭에서 검색했지만 못 찾은 헬스장 이름 — 있으면 이름/검색어에 미리 채워준다 */
+  initialName?: string;
+}
+
 /**
  * 신규 헬스장 등록 폼 (검증/전송은 useRegisterGym에, 장소 검색은 useGymSearch에 위임)
  * - 위경도는 사용자가 직접 입력하지 않는다: 검색으로 장소를 선택하면 그 좌표를,
@@ -19,16 +24,16 @@ import { GymSearchBox } from "./GymSearchBox";
  * - 등록 화면(app/(tabs)/register.tsx)의 "헬스장 등록" 탭에서 쓴다. 가격 등록이 이
  *   폼에 종속되지 않도록(항상 따로 등록 가능하도록) 분리했다.
  */
-export function GymRegisterForm() {
+export function GymRegisterForm({ initialName = "" }: GymRegisterFormProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { coords } = useLocation();
 
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialName);
   const [selectedCoords, setSelectedCoords] = useState<{
     lat: number;
     lng: number;

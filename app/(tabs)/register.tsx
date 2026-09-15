@@ -22,6 +22,8 @@ export default function RegisterScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<RegisterMode>("price");
   const [gymQuery, setGymQuery] = useState("");
+  // 가격 등록에서 검색했지만 못 찾은 헬스장 이름 — "헬스장 등록"으로 넘어갈 때 미리 채워준다.
+  const [newGymName, setNewGymName] = useState("");
   const { results, isSearching, hasSearched, error: searchError, search, reset } =
     useSearchGyms();
 
@@ -29,6 +31,13 @@ export default function RegisterScreen() {
     reset();
     setGymQuery("");
     router.push(`/gym/${gym.id}/price-submit`);
+  }
+
+  function handleRegisterNew() {
+    setNewGymName(gymQuery.trim());
+    reset();
+    setGymQuery("");
+    setMode("gym");
   }
 
   return (
@@ -52,10 +61,7 @@ export default function RegisterScreen() {
       {mode === "price" ? (
         <>
           <Text style={styles.title}>가격 등록</Text>
-          <Text style={styles.hint}>
-            이미 등록된 헬스장을 검색해 가격을 등록하세요. 찾는 헬스장이 없으면
-            &ldquo;헬스장 등록&rdquo; 탭에서 새로 등록할 수 있어요.
-          </Text>
+          <Text style={styles.hint}>이미 등록된 헬스장을 검색해 가격을 등록하세요.</Text>
           <PriceOnlyGymPicker
             query={gymQuery}
             onQueryChange={setGymQuery}
@@ -65,12 +71,13 @@ export default function RegisterScreen() {
             error={searchError}
             results={results}
             onSelect={handleSelectGym}
+            onRegisterNew={handleRegisterNew}
           />
         </>
       ) : (
         <>
           <Text style={styles.title}>헬스장 등록</Text>
-          <GymRegisterForm />
+          <GymRegisterForm initialName={newGymName} />
         </>
       )}
     </ScrollView>
