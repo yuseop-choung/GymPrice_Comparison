@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "../../components/ui/Button";
+import { Checkbox } from "../../components/ui/Checkbox";
 import { Input } from "../../components/ui/Input";
 import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
@@ -17,6 +18,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
+  const [keepLoggedIn, setKeepLoggedIn] = useState(true);
 
   const {
     isLoading,
@@ -28,8 +30,8 @@ export default function LoginScreen() {
   } = useAuth();
 
   function handleSubmit() {
-    if (isSignUp) signUp(email, password, nickname);
-    else loginWithEmail(email, password);
+    if (isSignUp) signUp(email, password, nickname, keepLoggedIn);
+    else loginWithEmail(email, password, keepLoggedIn);
   }
 
   return (
@@ -56,6 +58,13 @@ export default function LoginScreen() {
           placeholder="비밀번호"
           secureTextEntry
         />
+
+        <Checkbox
+          label="로그인 상태 유지"
+          checked={keepLoggedIn}
+          onChange={setKeepLoggedIn}
+        />
+
         {isSignUp ? (
           <Input
             label="닉네임"
