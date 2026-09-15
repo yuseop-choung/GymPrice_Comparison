@@ -174,9 +174,16 @@ create trigger on_users_update
   before update on public.users
   for each row execute function public.enforce_users_update_rules();
 
--- gyms (작성자 컬럼이 없어 일반 유저 수정은 미제공 → RLS로 자동 차단. 삭제는 관리자만 가능)
+-- gyms (작성자 컬럼이 없어 일반 유저 수정/삭제는 미제공 → RLS로 자동 차단.
+--       수정(오타 정정)/삭제는 관리자만 가능)
 create policy "gyms_select_all"  on public.gyms for select using (true);
 create policy "gyms_insert_auth" on public.gyms for insert to authenticated with check (true);
+create policy "gyms_update_admin" on public.gyms for update to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+-- 관리자 전용 정책이라 컬럼 권한을 따로 제한하지 않아도 안전하지만, 관리자 페이지가
+-- 실제로 수정하는 건 이름/주소/전화번호뿐이라 우선 그 범위만 열어둔다.
+revoke update on public.gyms from authenticated;
+grant update (name, address, phone) on public.gyms to authenticated;
 create policy "gyms_delete_admin" on public.gyms for delete to authenticated
   using (public.is_admin());
 
