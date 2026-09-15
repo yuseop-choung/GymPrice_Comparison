@@ -25,11 +25,7 @@
       '  <div class="who">' + G.escapeHtml(currentUser.nickname || currentUser.email) + '님으로 로그인됨</div></div>' +
       '  <button class="btn-ghost" id="logout">로그아웃</button>' +
       '</div>' +
-      '<div class="nav">' +
-      '  <a href="index.html" class="active">가격 심사</a>' +
-      '  <a href="dashboard.html">퍼널 대시보드</a>' +
-      '  <a href="manage.html">유저/헬스장 관리</a>' +
-      '</div>' +
+      G.renderNav("index") +
       '<div class="tabs">' +
       '  <div class="tab" data-tab="pending">심사 대기</div>' +
       '  <div class="tab" data-tab="approved">승인됨</div>' +
