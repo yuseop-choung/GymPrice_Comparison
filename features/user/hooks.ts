@@ -19,8 +19,17 @@ export const MAX_INTEREST_REGIONS = 5;
 interface UseAuthResult {
   isLoading: boolean;
   error: string | null;
-  loginWithEmail: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, nickname: string) => Promise<void>;
+  loginWithEmail: (
+    email: string,
+    password: string,
+    keepLoggedIn: boolean
+  ) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    nickname: string,
+    keepLoggedIn: boolean
+  ) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   loginWithNaver: () => Promise<void>;
 }
@@ -29,6 +38,8 @@ interface UseAuthResult {
  * 인증 훅 (비즈니스 로직 전담)
  * - 로그인/회원가입/SNS 로그인 실행 + 로딩/에러 상태 관리.
  * - 성공 시 authStore에 유저를 반영하면, 루트 레이아웃이 화면을 전환한다.
+ * - keepLoggedIn: "로그인 상태 유지" 체크 여부. false면 다음 앱 실행 시
+ *   기기에 남은 세션을 지우고 다시 로그인하게 한다 (authStore.initialize 참고).
  */
 export function useAuth(): UseAuthResult {
   const setUser = useAuthStore((state) => state.setUser);
@@ -36,12 +47,12 @@ export function useAuth(): UseAuthResult {
   const [error, setError] = useState<string | null>(null);
 
   // 공통 실행 래퍼: 로딩/에러 처리 + 성공 시 유저 반영
-  async function run(task: () => Promise<User>): Promise<void> {
+  async function run(task: () => Promise<User>, keepLoggedIn: boolean): Promise<void> {
     setIsLoading(true);
     setError(null);
     try {
       const user = await task();
-      setUser(user);
+      setUser(user, keepLoggedIn);
     } catch (e) {
       setError(e instanceof Error ? e.message : "인증에 실패했습니다.");
     } finally {
@@ -60,20 +71,21 @@ export function useAuth(): UseAuthResult {
   return {
     isLoading,
     error,
-    loginWithEmail: async (email, password) => {
+    loginWithEmail: async (email, password, keepLoggedIn) => {
       if (!requireEmail(email, password)) return;
-      await run(() => signInWithEmail(email, password));
+      await run(() => signInWithEmail(email, password), keepLoggedIn);
     },
-    signUp: async (email, password, nickname) => {
+    signUp: async (email, password, nickname, keepLoggedIn) => {
       if (!requireEmail(email, password)) return;
       if (nickname.trim() === "") {
         setError("닉네임을 입력해주세요.");
         return;
       }
-      await run(() => signUpWithEmail(email, password, nickname));
+      await run(() => signUpWithEmail(email, password, nickname), keepLoggedIn);
     },
-    loginWithGoogle: () => run(() => signInWithOAuth("google")),
-    loginWithNaver: () => run(() => signInWithOAuth("naver")),
+    // SNS 로그인은 이 체크박스의 대상이 아니므로 항상 기존 동작(유지)을 따른다.
+    loginWithGoogle: () => run(() => signInWithOAuth("google"), true),
+    loginWithNaver: () => run(() => signInWithOAuth("naver"), true),
   };
 }
 

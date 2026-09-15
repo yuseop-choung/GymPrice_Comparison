@@ -159,9 +159,15 @@ export async function updateUserLocation(
   if (error) throw new Error(error.message);
 }
 
-/** 로그아웃 */
-export async function signOut(): Promise<void> {
+/**
+ * 로그아웃
+ * - scope "global"(기본): 서버에도 세션 무효화를 요청하는 일반적인 로그아웃.
+ * - scope "local": 서버 요청 없이 기기에 저장된 세션만 지운다. "로그인 상태 유지"를
+ *   선택하지 않은 유저가 앱을 재실행했을 때, 오프라인이어도 곧바로 로그아웃 상태로
+ *   전환하기 위해 사용한다(authStore.initialize 참고).
+ */
+export async function signOut(scope: "global" | "local" = "global"): Promise<void> {
   if (USE_MOCK) return;
-  const { error } = await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut({ scope });
   if (error) throw new Error(error.message);
 }

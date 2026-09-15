@@ -1,5 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
-import { updateUserLocation } from "../../lib/api/auth";
+import {
+  signInWithEmail,
+  signInWithOAuth,
+  signUpWithEmail,
+  updateUserLocation,
+} from "../../lib/api/auth";
 import {
   addInterestRegion,
   getInterestRegions,
@@ -7,7 +12,7 @@ import {
 } from "../../lib/api/interestRegions";
 import { useAuthStore } from "../../store/authStore";
 import type { InterestRegion, User } from "../../types";
-import { useInterestRegions, useSyncUserLocation } from "./hooks";
+import { useAuth, useInterestRegions, useSyncUserLocation } from "./hooks";
 
 // api 모듈을 목으로 대체 (실제 supabase 로드 방지)
 jest.mock("../../lib/api/auth", () => ({
@@ -27,6 +32,9 @@ const updateUserLocationMock = updateUserLocation as jest.Mock;
 const getInterestRegionsMock = getInterestRegions as jest.Mock;
 const addInterestRegionMock = addInterestRegion as jest.Mock;
 const removeInterestRegionMock = removeInterestRegion as jest.Mock;
+const signInWithEmailMock = signInWithEmail as jest.Mock;
+const signUpWithEmailMock = signUpWithEmail as jest.Mock;
+const signInWithOAuthMock = signInWithOAuth as jest.Mock;
 
 const USER: User = {
   uid: "user-1",
@@ -111,6 +119,50 @@ describe("useSyncUserLocation", () => {
     );
 
     expect(updateUserLocationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAuth", () => {
+  beforeEach(() => {
+    signInWithEmailMock.mockReset();
+    signUpWithEmailMock.mockReset();
+    signInWithOAuthMock.mockReset();
+    useAuthStore.setState({ user: null });
+  });
+
+  it("로그인 성공 시 keepLoggedIn 선택을 그대로 authStore에 전달한다", async () => {
+    signInWithEmailMock.mockResolvedValue(USER);
+    const { result } = await renderHook(() => useAuth());
+
+    await act(async () => {
+      await result.current.loginWithEmail("a@a.com", "pw1234", false);
+    });
+
+    expect(signInWithEmailMock).toHaveBeenCalledWith("a@a.com", "pw1234");
+    expect(useAuthStore.getState().user).toEqual(USER);
+  });
+
+  it("회원가입 성공 시에도 keepLoggedIn 선택이 반영된다", async () => {
+    signUpWithEmailMock.mockResolvedValue(USER);
+    const { result } = await renderHook(() => useAuth());
+
+    await act(async () => {
+      await result.current.signUp("a@a.com", "pw1234", "닉네임", true);
+    });
+
+    expect(signUpWithEmailMock).toHaveBeenCalledWith("a@a.com", "pw1234", "닉네임");
+    expect(useAuthStore.getState().user).toEqual(USER);
+  });
+
+  it("이메일/비밀번호 미입력 시 API를 호출하지 않는다", async () => {
+    const { result } = await renderHook(() => useAuth());
+
+    await act(async () => {
+      await result.current.loginWithEmail("", "", true);
+    });
+
+    expect(signInWithEmailMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("이메일과 비밀번호를 입력해주세요.");
   });
 });
 
