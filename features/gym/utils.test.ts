@@ -1,4 +1,4 @@
-import { distanceKm, formatDistance } from "./utils";
+import { distanceKm, formatDistance, isWithinBounds } from "./utils";
 
 describe("distanceKm", () => {
   it("같은 좌표는 0", () => {
@@ -25,5 +25,23 @@ describe("formatDistance", () => {
   it("1km 이상은 소수 1자리 km", () => {
     expect(formatDistance(1)).toBe("1.0km");
     expect(formatDistance(1.234)).toBe("1.2km");
+  });
+});
+
+describe("isWithinBounds", () => {
+  const bounds = { swLat: 37.0, swLng: 127.0, neLat: 37.5, neLng: 127.5 };
+
+  it("영역 안쪽 좌표는 true", () => {
+    expect(isWithinBounds({ lat: 37.25, lng: 127.25 }, bounds)).toBe(true);
+  });
+
+  it("경계선 위(포함) 좌표도 true", () => {
+    expect(isWithinBounds({ lat: 37.0, lng: 127.0 }, bounds)).toBe(true);
+    expect(isWithinBounds({ lat: 37.5, lng: 127.5 }, bounds)).toBe(true);
+  });
+
+  it("영역 바깥 좌표는 false", () => {
+    expect(isWithinBounds({ lat: 36.9, lng: 127.25 }, bounds)).toBe(false);
+    expect(isWithinBounds({ lat: 37.25, lng: 127.6 }, bounds)).toBe(false);
   });
 });

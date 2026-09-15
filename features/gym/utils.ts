@@ -1,6 +1,21 @@
+import type { MapBounds } from "./components/kakaoMapHtml";
+
 /**
  * 헬스장 관련 유틸
  */
+
+/** 좌표가 지도에 현재 보이는 영역(뷰포트) 안에 있는지 — 홈 화면의 "지도 안 헬스장만 목록에" 필터링용 */
+export function isWithinBounds(
+  coords: { lat: number; lng: number },
+  bounds: MapBounds
+): boolean {
+  return (
+    coords.lat >= bounds.swLat &&
+    coords.lat <= bounds.neLat &&
+    coords.lng >= bounds.swLng &&
+    coords.lng <= bounds.neLng
+  );
+}
 
 /** 거리(km)를 표시용 문자열로 변환 (1km 미만은 m 단위) */
 export function formatDistance(km: number): string {
