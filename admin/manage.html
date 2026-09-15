@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GymPrice Admin</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  var G = window.GymPriceAdmin;
+  var app = document.getElementById("app");
+  var currentUser = null;
+  var currentTab = "users"; // "users" | "gyms"
+  var allUsers = [];
+  var allGyms = [];
+
+  function renderManage(sb, user, renderLogin) {
+    currentUser = user;
+    app.innerHTML =
+      '<div class="top-row">' +
+      '  <div><h1 style="margin-bottom:0">GymPrice Admin</h1>' +
+      '  <div class="who">' + G.escapeHtml(user.nickname || user.email) + '님으로 로그인됨</div></div>' +
+      '  <button class="btn-ghost" id="logout">로그아웃</button>' +
+      '</div>' +
+      '<div class="nav">' +
+      '  <a href="index.html">가격 심사</a>' +
+      '  <a href="dashboard.html">퍼널 대시보드</a>' +
+      '  <a href="manage.html" class="active">유저/헬스장 관리</a>' +
+      '</div>' +
+      '<div class="tabs">' +
+      '  <div class="tab" data-tab="users">유저</div>' +
+      '  <div class="tab" data-tab="gyms">헬스장</div>' +
+      '</div>' +
+      '<div id="manage-body"><div class="empty">불러오는 중...</div></div>';
+
+    document.getElementById("logout").onclick = function () {
+      sb.auth.signOut().then(function () { renderLogin(); });
+    };
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (el) {
+      el.onclick = function () {
+        currentTab = el.getAttribute("data-tab");
+        syncTabs();
+        renderCurrentTab(sb);
+      };
+    });
+    syncTabs();
+    loadUsers(sb);
+    loadGyms(sb);
+  }
+
+  function syncTabs() {
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (el) {
+      el.classList.toggle("active", el.getAttribute("data-tab") === currentTab);
+    });
+  }
+
+  function renderCurrentTab(sb) {
+    if (currentTab === "users") renderUsers(sb, allUsers);
+    else renderGyms(sb, allGyms);
+  }
+
+  // ---------- 유저 탭 ----------
+  function loadUsers(sb) {
+    sb.from("users")
+      .select("uid, nickname, email, is_admin, created_at")
+      .order("created_at", { ascending: false })
+      .then(function (res) {
+        if (res.error) {
+          document.getElementById("manage-body").innerHTML =
+            '<div class="error-text">유저 목록을 불러오지 못했습니다: ' + G.escapeHtml(res.error.message) + '</div>';
+          return;
+        }
+        allUsers = res.data || [];
+        if (currentTab === "users") renderUsers(sb, allUsers);
+      });
+  }
+
+  function renderUsers(sb, users) {
+    var body = document.getElementById("manage-body");
+    body.innerHTML =
+      '<input id="user-search" placeholder="닉네임 또는 이메일로 검색" style="margin-bottom:12px" />' +
+      '<div id="user-list"></div>';
+
+    function draw(list) {
+      var listEl = document.getElementById("user-list");
+      if (list.length === 0) {
+        listEl.innerHTML = '<div class="empty">해당하는 유저가 없습니다.</div>';
+        return;
+      }
+      listEl.innerHTML = list
+        .map(function (u) {
+          var isSelf = u.uid === currentUser.id;
+          return (
+            '<div class="card">' +
+            (u.is_admin ? '<span class="status-badge status-approved">관리자</span>' : "") +
+            '<div class="price-name">' + G.escapeHtml(u.nickname || "(닉네임 없음)") + (isSelf ? " (나)" : "") + "</div>" +
+            '<div class="price-address">' + G.escapeHtml(u.email) + "</div>" +
+            '<div class="meta">가입일: ' + G.fmtDate(u.created_at) + "</div>" +
+            '<div class="actions">' +
+            '  <button class="' + (u.is_admin ? "btn-reject" : "btn-approve") + '" data-toggle-admin="' + u.uid + '" data-next="' + (!u.is_admin) + '">' +
+            (u.is_admin ? "관리자 권한 해제" : "관리자로 지정") +
+            "</button>" +
+            "</div>" +
+            "</div>"
+          );
+        })
+        .join("");
+
+      Array.prototype.forEach.call(listEl.querySelectorAll("button[data-toggle-admin]"), function (btn) {
+        btn.onclick = function () {
+          var uid = btn.getAttribute("data-toggle-admin");
+          var next = btn.getAttribute("data-next") === "true";
+          var confirmMsg = next
+            ? "이 유저에게 관리자 권한을 부여할까요?"
+            : "이 유저의 관리자 권한을 해제할까요?";
+          if (!confirm(confirmMsg)) return;
+          btn.disabled = true;
+          sb.from("users").update({ is_admin: next }).eq("uid", uid).then(function (res) {
+            if (res.error) {
+              alert("처리 실패: " + res.error.message);
+              btn.disabled = false;
+              return;
+            }
+            loadUsers(sb);
+          });
+        };
+      });
+    }
+
+    draw(users);
+    document.getElementById("user-search").addEventListener("input", function (e) {
+      var q = e.target.value.trim().toLowerCase();
+      if (!q) { draw(users); return; }
+      draw(
+        users.filter(function (u) {
+          return (
+            (u.nickname || "").toLowerCase().indexOf(q) !== -1 ||
+            (u.email || "").toLowerCase().indexOf(q) !== -1
+          );
+        })
+      );
+    });
+  }
+
+  // ---------- 헬스장 탭 ----------
+  function loadGyms(sb) {
+    sb.from("gyms")
+      .select("id, name, address, created_at")
+      .order("created_at", { ascending: false })
+      .then(function (res) {
+        if (res.error) {
+          document.getElementById("manage-body").innerHTML =
+            '<div class="error-text">헬스장 목록을 불러오지 못했습니다: ' + G.escapeHtml(res.error.message) + '</div>';
+          return;
+        }
+        allGyms = res.data || [];
+        if (currentTab === "gyms") renderGyms(sb, allGyms);
+      });
+  }
+
+  function renderGyms(sb, gyms) {
+    var body = document.getElementById("manage-body");
+    if (gyms.length === 0) {
+      body.innerHTML = '<div class="empty">등록된 헬스장이 없습니다.</div>';
+      return;
+    }
+    body.innerHTML = gyms
+      .map(function (g) {
+        return (
+          '<div class="card">' +
+          '<div class="price-name">' + G.escapeHtml(g.name) + "</div>" +
+          '<div class="price-address">' + G.escapeHtml(g.address) + "</div>" +
+          '<div class="meta">등록일: ' + G.fmtDate(g.created_at) + "</div>" +
+          '<div class="actions">' +
+          '  <button class="btn-reject" data-delete-gym="' + g.id + '">헬스장 삭제</button>' +
+          "</div>" +
+          "</div>"
+        );
+      })
+      .join("");
+
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-delete-gym]"), function (btn) {
+      btn.onclick = function () {
+        var id = btn.getAttribute("data-delete-gym");
+        if (!confirm("이 헬스장과 등록된 모든 가격 제보가 함께 삭제됩니다. 계속할까요?")) return;
+        btn.disabled = true;
+        sb.from("gyms").delete().eq("id", id).then(function (res) {
+          if (res.error) {
+            alert("삭제 실패: " + res.error.message);
+            btn.disabled = false;
+            return;
+          }
+          loadGyms(sb);
+        });
+      };
+    });
+  }
+
+  G.boot(app, renderManage, "유저 / 헬스장을 관리하세요.");
+})();
+</script>
+</body>
+</html>

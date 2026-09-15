@@ -138,14 +138,47 @@ create policy "users_select_admin" on public.users for select to authenticated
   using (public.is_admin());
 create policy "users_update_self" on public.users for update to authenticated
   using (auth.uid() = uid) with check (auth.uid() = uid);
+-- 관리자는 다른 유저의 관리자 권한을 부여/해제할 수 있어야 한다(관리자 페이지의
+-- "유저 관리" 기능). is_admin 외 다른 필드(닉네임/이메일/위치)는 아래 트리거가
+-- 관리자가 "타인의" 행을 건드릴 때만 원래 값으로 되돌려 막는다.
+create policy "users_update_admin" on public.users for update to authenticated
+  using (public.is_admin()) with check (public.is_admin());
 create policy "users_delete_self" on public.users for delete to authenticated
   using (auth.uid() = uid);
 -- (INSERT는 아래 트리거가 SECURITY DEFINER로 처리하므로 정책 불필요)
 -- (on-new-price 등 Edge Function은 SERVICE_ROLE 키로 동작해 RLS를 우회하므로 영향 없음)
 
--- gyms (작성자 컬럼이 없어 일반 유저 수정/삭제는 미제공 → RLS로 자동 차단)
+-- ⚠️ users_update_self는 "본인 행인가"만 검사할 뿐, 본인이 스스로 is_admin을
+-- true로 바꿔 셀프 승격하는 것까지는 막지 못한다. 관리자가 아닌 호출자는 is_admin을
+-- 절대 바꿀 수 없게, 관리자가 "타인의" 행을 수정할 때는 is_admin 외 다른 필드를
+-- 못 바꾸게(사생활 보호) 트리거로 강제한다.
+create or replace function public.enforce_users_update_rules()
+returns trigger
+language plpgsql
+as $$
+begin
+  if not public.is_admin() then
+    new.is_admin := old.is_admin;
+  elsif auth.uid() <> old.uid then
+    new.email := old.email;
+    new.nickname := old.nickname;
+    new.home_lat := old.home_lat;
+    new.home_lng := old.home_lng;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_users_update on public.users;
+create trigger on_users_update
+  before update on public.users
+  for each row execute function public.enforce_users_update_rules();
+
+-- gyms (작성자 컬럼이 없어 일반 유저 수정은 미제공 → RLS로 자동 차단. 삭제는 관리자만 가능)
 create policy "gyms_select_all"  on public.gyms for select using (true);
 create policy "gyms_insert_auth" on public.gyms for insert to authenticated with check (true);
+create policy "gyms_delete_admin" on public.gyms for delete to authenticated
+  using (public.is_admin());
 
 -- gym_prices
 -- SELECT: 승인(approved)된 가격은 누구나, 본인 가격은 심사 상태와 무관하게 본인만,
@@ -173,6 +206,9 @@ create policy "gym_prices_update_owner_or_admin" on public.gym_prices for update
 
 create policy "gym_prices_delete_owner" on public.gym_prices for delete to authenticated
   using (auth.uid() = user_id);
+-- 관리자는 문제가 되는 제보를 직접 삭제할 수도 있다(거절 상태로 남기는 대신 완전 제거).
+create policy "gym_prices_delete_admin" on public.gym_prices for delete to authenticated
+  using (public.is_admin());
 
 -- ⚠️ RLS의 update/insert 정책은 "이 행이 내 것인가"만 검사할 뿐, 요청으로 gym_id/user_id를
 -- 다른 값으로 바꾸거나 status를 직접 'approved'로 넣는 것까지는 막지 못한다. 컬럼 단위
