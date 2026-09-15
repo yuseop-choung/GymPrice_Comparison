@@ -13,6 +13,7 @@ function makePrice(price_1m: number | null, userId = `u-${price_1m}`): GymPrice 
     price_6m: null,
     price_12m: null,
     memo: null,
+    status: "approved",
     created_at: "2026-01-01T00:00:00Z",
   };
 }

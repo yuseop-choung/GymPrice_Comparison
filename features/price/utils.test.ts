@@ -7,7 +7,7 @@ import {
   validatePriceValues,
 } from "./utils";
 
-/** 테스트용 가격 객체 생성 헬퍼 */
+/** 테스트용 가격 객체 생성 헬퍼 (기본 status는 "approved" — 별도 지정 시 override) */
 function makePrice(values: Partial<GymPrice>): GymPrice {
   return {
     id: "p",
@@ -18,6 +18,7 @@ function makePrice(values: Partial<GymPrice>): GymPrice {
     price_6m: null,
     price_12m: null,
     memo: null,
+    status: "approved",
     created_at: "2026-01-01T00:00:00Z",
     ...values,
   };
@@ -80,6 +81,18 @@ describe("summarizePrices", () => {
     expect(oneMonth.min).toBe(50000);
     expect(oneMonth.avg).toBe(55000);
     expect(oneMonth.count).toBe(2);
+  });
+
+  it("승인(approved)되지 않은 가격(pending/rejected)은 통계에서 제외한다", () => {
+    const prices = [
+      makePrice({ user_id: "u1", price_1m: 30000, status: "pending" }),
+      makePrice({ user_id: "u2", price_1m: 20000, status: "rejected" }),
+      makePrice({ user_id: "u3", price_1m: 55000, status: "approved" }),
+    ];
+    const oneMonth = summarizePrices(prices)[0];
+    // pending/rejected인 더 싼 가격(30000/20000)은 무시되고 승인된 55000만 반영
+    expect(oneMonth.min).toBe(55000);
+    expect(oneMonth.count).toBe(1);
   });
 
   it("평균가는 반올림한다", () => {

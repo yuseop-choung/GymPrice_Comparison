@@ -46,6 +46,8 @@ const MOCK_GYMS: Gym[] = [
 ];
 
 // 가격은 메모리에 보관하여 등록 시 즉시 반영되도록 한다.
+// status: 실제 서버는 관리자 승인 전엔 'pending'으로 시작하지만, 데모 편의를 위해
+// 미리 넣어둔 항목들은 'approved'로 시작한다(새로 등록하면 submitPriceMock이 'pending'으로 넣는다).
 const MOCK_PRICES: GymPrice[] = [
   {
     id: "price-1",
@@ -56,6 +58,7 @@ const MOCK_PRICES: GymPrice[] = [
     price_6m: 300000,
     price_12m: 540000,
     memo: "PT 10회 포함 시 +30만",
+    status: "approved",
     created_at: "2026-02-01T00:00:00Z",
   },
   {
@@ -67,6 +70,7 @@ const MOCK_PRICES: GymPrice[] = [
     price_6m: 280000,
     price_12m: null,
     memo: null,
+    status: "approved",
     created_at: "2026-03-01T00:00:00Z",
   },
   {
@@ -78,6 +82,7 @@ const MOCK_PRICES: GymPrice[] = [
     price_6m: null,
     price_12m: 420000,
     memo: "학생 할인 가능",
+    status: "approved",
     created_at: "2026-02-15T00:00:00Z",
   },
 ];
@@ -103,7 +108,10 @@ function delay<T>(value: T, ms = 300): Promise<T> {
 
 export function getNearbyGymsMock(): Promise<GymWithPrice[]> {
   const result: GymWithPrice[] = MOCK_GYMS.map((gym) => {
-    const gymPrices = MOCK_PRICES.filter((p) => p.gym_id === gym.id);
+    // 관리자 승인(approved)된 가격만 공개 최저가 계산에 반영한다.
+    const gymPrices = MOCK_PRICES.filter(
+      (p) => p.gym_id === gym.id && p.status === "approved"
+    );
     // 같은 유저의 중복 제보는 최신 1건만 최저가 계산에 반영한다 (api.ts와 동일 로직).
     const latestPrices = latestByGroup(gymPrices, (p) => p.user_id);
     const monthly = latestPrices
@@ -174,7 +182,19 @@ export function updatePriceMock(
   if (index === -1) {
     return Promise.reject(new Error("가격 정보를 찾을 수 없습니다."));
   }
-  MOCK_PRICES[index] = { ...MOCK_PRICES[index], ...values };
+  const before = MOCK_PRICES[index];
+  const priceChanged =
+    before.price_1m !== values.price_1m ||
+    before.price_3m !== values.price_3m ||
+    before.price_6m !== values.price_6m ||
+    before.price_12m !== values.price_12m;
+
+  // 가격 값을 바꾸면 실제 서버(트리거)와 동일하게 다시 심사받도록 되돌린다.
+  MOCK_PRICES[index] = {
+    ...before,
+    ...values,
+    status: priceChanged ? "pending" : before.status,
+  };
   return delay({ ...MOCK_PRICES[index] });
 }
 
@@ -198,12 +218,13 @@ export function registerGymMock(
 }
 
 export function submitPriceMock(
-  data: Omit<GymPrice, "id" | "created_at">
+  data: Omit<GymPrice, "id" | "created_at" | "status">
 ): Promise<GymPrice> {
   seq += 1;
   const created: GymPrice = {
     ...data,
     id: `price-mock-${seq}`,
+    status: "pending", // 실제 서버와 동일하게 심사 대기 상태로 시작
     created_at: new Date().toISOString(),
   };
   MOCK_PRICES.push(created);

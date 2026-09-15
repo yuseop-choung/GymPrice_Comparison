@@ -15,7 +15,7 @@ export default function PriceSubmitScreen() {
 
   const { submit, isLoading, error } = useSubmitPrice({
     onSuccess: () => {
-      Alert.alert("등록 완료", "가격이 등록되었습니다.");
+      Alert.alert("등록 완료", "가격이 등록되었습니다. 관리자 검수 후 공개됩니다.");
       // router.back() 대신 상세 화면으로 명시적으로 이동한다 — 헬스장 등록 직후
       // 곧바로 이 화면으로 온 경우(뒤로 갈 화면이 없음)에도 항상 안전하게 동작한다.
       router.replace(`/gym/${gymId}`);

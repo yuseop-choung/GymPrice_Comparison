@@ -100,10 +100,13 @@ const PERIOD_FIELDS: {
 /**
  * 등록된 가격들로부터 기간별 최저가/평균가를 계산한다.
  * - null(미입력) 값은 통계에서 제외한다.
+ * - 관리자가 승인(approved)한 가격만 반영한다 — RLS가 본인의 심사 대기 중인 가격도
+ *   함께 내려줄 수 있어(본인 조회 허용), 공개 통계 계산에서는 여기서 한 번 더 걸러낸다.
  * - 같은 유저의 중복 제보는 최신 1건만 반영한다(latestByGroup).
  */
 export function summarizePrices(prices: GymPrice[]): PriceStat[] {
-  const deduped = latestByGroup(prices, (price) => price.user_id);
+  const approved = prices.filter((price) => price.status === "approved");
+  const deduped = latestByGroup(approved, (price) => price.user_id);
 
   return PERIOD_FIELDS.map(({ key, label }) => {
     const values = deduped
