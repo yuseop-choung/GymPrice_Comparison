@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GymPrice Admin</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  var G = window.GymPriceAdmin;
+  var app = document.getElementById("app");
+  var RAW = null; // { users: [{created_at}], gymsCount: n, prices: [{user_id,status,created_at}] }
+  var currentRange = "30"; // "7" | "30" | "90" | "all"
+
+  // ---------- 숫자/날짜 유틸 ----------
+  function niceMax(v) {
+    if (v <= 0) return 5;
+    var exp = Math.floor(Math.log(v) / Math.LN10);
+    var base = Math.pow(10, exp);
+    var n = v / base;
+    var step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+    return Math.round(step * base);
+  }
+  function shortDate(key) {
+    var parts = key.split("-");
+    return parseInt(parts[1], 10) + "." + parseInt(parts[2], 10);
+  }
+  function pct(n, d) {
+    if (!d) return null;
+    return Math.round((n / d) * 100);
+  }
+
+  // ---------- 관리자 화면 진입 ----------
+  function renderDashboard(sb, currentUser, renderLogin) {
+    app.innerHTML =
+      '<div class="top-row">' +
+      '  <div><h1 style="margin-bottom:0">GymPrice Admin</h1>' +
+      '  <div class="who">' + G.escapeHtml(currentUser.nickname || currentUser.email) + '님으로 로그인됨</div></div>' +
+      '  <button class="btn-ghost" id="logout">로그아웃</button>' +
+      '</div>' +
+      '<div class="nav">' +
+      '  <a href="index.html">가격 심사</a>' +
+      '  <a href="dashboard.html" class="active">퍼널 대시보드</a>' +
+      '  <a href="manage.html">유저/헬스장 관리</a>' +
+      '</div>' +
+      '<div id="dash-body"><div class="empty">불러오는 중...</div></div>';
+
+    document.getElementById("logout").onclick = function () {
+      sb.auth.signOut().then(function () { renderLogin(); });
+    };
+
+    loadData(sb);
+  }
+
+  function loadData(sb) {
+    Promise.all([
+      sb.from("users").select("created_at"),
+      sb.from("gyms").select("id", { count: "exact", head: true }),
+      sb.from("gym_prices").select("user_id, status, created_at")
+    ]).then(function (results) {
+      var usersRes = results[0], gymsRes = results[1], pricesRes = results[2];
+      var err = usersRes.error || gymsRes.error || pricesRes.error;
+      if (err) {
+        document.getElementById("dash-body").innerHTML =
+          '<div class="error-text">데이터를 불러오지 못했습니다: ' + G.escapeHtml(err.message) + '</div>';
+        return;
+      }
+      RAW = {
+        users: usersRes.data || [],
+        gymsCount: gymsRes.count || 0,
+        prices: pricesRes.data || []
+      };
+      renderBody();
+    });
+  }
+
+  // ---------- 본문 렌더 (스탯 / 퍼널 / 상태 / 추이) ----------
+  function renderBody() {
+    var users = RAW.users, prices = RAW.prices;
+
+    var byStatus = { pending: 0, approved: 0, rejected: 0 };
+    var submitterSet = {}, approvedSubmitterSet = {};
+    prices.forEach(function (p) {
+      byStatus[p.status] = (byStatus[p.status] || 0) + 1;
+      submitterSet[p.user_id] = true;
+      if (p.status === "approved") approvedSubmitterSet[p.user_id] = true;
+    });
+    var submitterCount = Object.keys(submitterSet).length;
+    var approvedSubmitterCount = Object.keys(approvedSubmitterSet).length;
+    var reviewed = byStatus.approved + byStatus.rejected;
+    var approvalRate = pct(byStatus.approved, reviewed);
+
+    var funnelStages = [
+      { label: "가입", count: users.length },
+      { label: "제보 경험", count: submitterCount },
+      { label: "승인 경험", count: approvedSubmitterCount }
+    ];
+
+    var body = document.getElementById("dash-body");
+    body.innerHTML =
+      '<div class="section-title">핵심 지표</div>' +
+      '<div class="stat-grid">' +
+        statTile("총 가입자", users.length) +
+        statTile("총 헬스장", RAW.gymsCount) +
+        statTile("총 가격 제보", prices.length) +
+        statTile("제보 승인율", approvalRate === null ? "-" : approvalRate + "%") +
+      '</div>' +
+
+      '<div class="section-title">유저 퍼널 (가입 → 제보 → 승인)</div>' +
+      '<div class="card">' + renderFunnel(funnelStages) + '</div>' +
+
+      '<div class="section-title">가격 제보 심사 현황</div>' +
+      '<div class="status-grid">' +
+        statusTile("⏳", "심사중", byStatus.pending, "var(--status-warning)") +
+        statusTile("✅", "승인됨", byStatus.approved, "var(--status-good)") +
+        statusTile("✕", "거절됨", byStatus.rejected, "var(--status-critical)") +
+      '</div>' +
+
+      '<div class="section-title">일별 추이</div>' +
+      '<div class="chart-card" id="trend-card"></div>';
+
+    renderTrendSection();
+  }
+
+  function statTile(label, value) {
+    return (
+      '<div class="stat-tile">' +
+      '  <div class="stat-label">' + G.escapeHtml(label) + '</div>' +
+      '  <div class="stat-value">' + G.escapeHtml(String(value)) + '</div>' +
+      '</div>'
+    );
+  }
+  function statusTile(icon, label, value, color) {
+    return (
+      '<div class="status-tile">' +
+      '  <div class="icon">' + icon + '</div>' +
+      '  <div class="label">' + G.escapeHtml(label) + '</div>' +
+      '  <div class="value" style="color:' + color + '">' + value + '</div>' +
+      '</div>'
+    );
+  }
+
+  // 퍼널: 순서형(ordinal) 램프 — 위(넓음)일수록 밝고, 아래(좁음)일수록 진하다.
+  var ORDINAL_VARS = ["var(--ordinal-1)", "var(--ordinal-2)", "var(--ordinal-3)"];
+  function renderFunnel(stages) {
+    var max = Math.max(1, stages[0].count);
+    return (
+      '<div class="funnel">' +
+      stages
+        .map(function (stage, i) {
+          var widthPct = Math.max(6, Math.round((stage.count / max) * 100));
+          var rate = i === 0 ? null : pct(stage.count, stages[i - 1].count);
+          return (
+            '<div class="funnel-row">' +
+            '  <div class="funnel-label">' + G.escapeHtml(stage.label) + '</div>' +
+            '  <div class="funnel-track">' +
+            '    <div class="funnel-bar" style="width:' + widthPct + '%;background:' + ORDINAL_VARS[i] + '">' +
+            '      <span>' + stage.count + '</span>' +
+            '    </div>' +
+            '  </div>' +
+            '  <div class="funnel-rate">' + (rate === null ? "" : rate + "%") + '</div>' +
+            '</div>'
+          );
+        })
+        .join("") +
+      '</div>'
+    );
+  }
+
+  // ---------- 일별 추이 (라인 차트) ----------
+  function dailyBuckets(range) {
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var days;
+    if (range === "all") {
+      var all = RAW.users.concat(RAW.prices);
+      var earliest = today;
+      all.forEach(function (r) {
+        var d = new Date(r.created_at);
+        d.setHours(0, 0, 0, 0);
+        if (d < earliest) earliest = d;
+      });
+      days = Math.max(1, Math.round((today - earliest) / 86400000) + 1);
+    } else {
+      days = parseInt(range, 10);
+    }
+    days = Math.min(days, 180); // 화면이 너무 빽빽해지지 않도록 상한
+
+    var dates = [];
+    var startTime = today.getTime() - (days - 1) * 86400000;
+    for (var i = 0; i < days; i++) {
+      dates.push(new Date(startTime + i * 86400000).toISOString().slice(0, 10));
+    }
+
+    var signupMap = {}, submitMap = {};
+    RAW.users.forEach(function (u) {
+      var k = G.toDayKey(u.created_at);
+      signupMap[k] = (signupMap[k] || 0) + 1;
+    });
+    RAW.prices.forEach(function (p) {
+      var k = G.toDayKey(p.created_at);
+      submitMap[k] = (submitMap[k] || 0) + 1;
+    });
+
+    return {
+      dates: dates,
+      signups: dates.map(function (d) { return signupMap[d] || 0; }),
+      submissions: dates.map(function (d) { return submitMap[d] || 0; })
+    };
+  }
+
+  function renderTrendSection() {
+    var card = document.getElementById("trend-card");
+    card.innerHTML =
+      '<div class="chart-head">' +
+      '  <div class="legend">' +
+      '    <div class="legend-item"><span class="legend-key" style="background:var(--series-1)"></span>신규 가입</div>' +
+      '    <div class="legend-item"><span class="legend-key" style="background:var(--series-2)"></span>신규 제보</div>' +
+      '  </div>' +
+      '  <div class="range-tabs" id="range-tabs">' +
+      ["7", "30", "90", "all"]
+        .map(function (r) {
+          var text = r === "all" ? "전체" : "최근 " + r + "일";
+          return '<div class="range-tab' + (r === currentRange ? ' active' : '') + '" data-range="' + r + '">' + text + '</div>';
+        })
+        .join("") +
+      '  </div>' +
+      '</div>' +
+      '<div id="trend-plot" style="position:relative"></div>' +
+      '<a class="table-toggle" id="table-toggle">표로 보기</a>';
+
+    Array.prototype.forEach.call(card.querySelectorAll(".range-tab"), function (el) {
+      el.onclick = function () {
+        currentRange = el.getAttribute("data-range");
+        renderTrendSection();
+      };
+    });
+
+    var showTable = false;
+    document.getElementById("table-toggle").onclick = function () {
+      showTable = !showTable;
+      this.textContent = showTable ? "차트로 보기" : "표로 보기";
+      draw();
+    };
+
+    function draw() {
+      var data = dailyBuckets(currentRange);
+      if (showTable) {
+        renderTrendTable(data);
+      } else {
+        renderTrendChart(data);
+      }
+    }
+    draw();
+  }
+
+  function renderTrendTable(data) {
+    var rows = data.dates
+      .map(function (d, i) {
+        return (
+          "<tr><td>" + shortDate(d) + "</td><td>" + data.signups[i] + "</td><td>" + data.submissions[i] + "</td></tr>"
+        );
+      })
+      .join("");
+    document.getElementById("trend-plot").innerHTML =
+      '<table class="chart-table"><thead><tr><th>날짜</th><th>신규 가입</th><th>신규 제보</th></tr></thead><tbody>' +
+      rows +
+      "</tbody></table>";
+  }
+
+  function renderTrendChart(data) {
+    var dates = data.dates, seriesA = data.signups, seriesB = data.submissions;
+    var n = dates.length;
+    var W = 640, H = 200, padL = 30, padR = 10, padT = 10, padB = 22;
+    var innerW = W - padL - padR, innerH = H - padT - padB;
+    var maxVal = Math.max(1, Math.max.apply(null, seriesA), Math.max.apply(null, seriesB));
+    var yMax = niceMax(maxVal);
+
+    function x(i) { return n <= 1 ? padL + innerW / 2 : padL + (innerW * i) / (n - 1); }
+    function y(v) { return padT + innerH - (innerH * v) / yMax; }
+    function pathFor(series) {
+      return series
+        .map(function (v, i) { return (i === 0 ? "M" : "L") + x(i).toFixed(1) + "," + y(v).toFixed(1); })
+        .join(" ");
+    }
+
+    var gridLines = [0, 0.5, 1]
+      .map(function (f) {
+        var yy = padT + innerH * (1 - f);
+        var val = Math.round(yMax * f);
+        return (
+          '<line class="chart-grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy.toFixed(1) + '" y2="' + yy.toFixed(1) + '" />' +
+          '<text class="chart-axis-label" x="' + (padL - 6) + '" y="' + (yy + 3).toFixed(1) + '" text-anchor="end">' + val + "</text>"
+        );
+      })
+      .join("");
+
+    var xLabels =
+      '<text class="chart-axis-label" x="' + x(0).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="start">' + shortDate(dates[0]) + "</text>" +
+      (n > 1 ? '<text class="chart-axis-label" x="' + x(n - 1).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="end">' + shortDate(dates[n - 1]) + "</text>" : "");
+
+    var bandW = n > 1 ? innerW / (n - 1) : innerW;
+    var hits = dates
+      .map(function (d, i) {
+        var cx = x(i);
+        return '<rect class="chart-hit" data-i="' + i + '" x="' + (cx - bandW / 2).toFixed(1) + '" y="' + padT + '" width="' + bandW.toFixed(1) + '" height="' + innerH + '" />';
+      })
+      .join("");
+
+    var plot = document.getElementById("trend-plot");
+    plot.innerHTML =
+      '<svg class="chart-svg" viewBox="0 0 ' + W + " " + H + '" id="trend-svg">' +
+      gridLines +
+      '<line class="chart-baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + innerH) + '" y2="' + (padT + innerH) + '" />' +
+      '<path class="chart-line" d="' + pathFor(seriesA) + '" style="stroke:var(--series-1)" />' +
+      '<path class="chart-line" d="' + pathFor(seriesB) + '" style="stroke:var(--series-2)" />' +
+      (n > 0 ? '<circle class="chart-end-dot" cx="' + x(n - 1).toFixed(1) + '" cy="' + y(seriesA[n - 1]).toFixed(1) + '" r="4" fill="var(--series-1)" />' : "") +
+      (n > 0 ? '<circle class="chart-end-dot" cx="' + x(n - 1).toFixed(1) + '" cy="' + y(seriesB[n - 1]).toFixed(1) + '" r="4" fill="var(--series-2)" />' : "") +
+      '<line class="chart-crosshair" id="crosshair" x1="0" x2="0" y1="' + padT + '" y2="' + (padT + innerH) + '" />' +
+      xLabels +
+      hits +
+      "</svg>" +
+      '<div class="tooltip" id="chart-tooltip"><div class="t-date"></div>' +
+      '<div class="t-row"><span class="t-key" style="background:var(--series-1)"></span>신규 가입<span class="t-val" id="tt-a"></span></div>' +
+      '<div class="t-row"><span class="t-key" style="background:var(--series-2)"></span>신규 제보<span class="t-val" id="tt-b"></span></div>' +
+      "</div>";
+
+    var svg = document.getElementById("trend-svg");
+    var crosshair = document.getElementById("crosshair");
+    var tooltip = document.getElementById("chart-tooltip");
+
+    function showAt(i) {
+      var cx = x(i);
+      crosshair.setAttribute("x1", cx.toFixed(1));
+      crosshair.setAttribute("x2", cx.toFixed(1));
+      crosshair.style.opacity = 1;
+
+      var rect = svg.getBoundingClientRect();
+      var scale = rect.width / W;
+      tooltip.querySelector(".t-date").textContent = dates[i];
+      document.getElementById("tt-a").textContent = seriesA[i];
+      document.getElementById("tt-b").textContent = seriesB[i];
+      tooltip.style.opacity = 1;
+      var left = cx * scale + 12;
+      if (left + 140 > rect.width) left = cx * scale - 152;
+      tooltip.style.left = left + "px";
+      tooltip.style.top = "4px";
+    }
+    function hide() {
+      crosshair.style.opacity = 0;
+      tooltip.style.opacity = 0;
+    }
+
+    Array.prototype.forEach.call(svg.querySelectorAll(".chart-hit"), function (rect) {
+      var i = parseInt(rect.getAttribute("data-i"), 10);
+      rect.addEventListener("pointerenter", function () { showAt(i); });
+      rect.addEventListener("pointermove", function () { showAt(i); });
+      rect.addEventListener("focus", function () { showAt(i); });
+    });
+    svg.addEventListener("pointerleave", hide);
+  }
+
+  G.boot(app, renderDashboard, "가입/제보/승인 퍼널을 확인하세요.");
+})();
+</script>
+</body>
+</html>
