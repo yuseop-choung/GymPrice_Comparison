@@ -4,30 +4,30 @@ import {
   deletePrice,
   getMyPrices,
   getPrice,
-  submitPrice,
+  submitPrices,
   updatePrice,
 } from "../gym/api";
-import { validatePriceValues } from "./utils";
+import { validatePriceItem } from "./utils";
 
-/** 가격 등록 입력값 (id, created_at, status 는 서버에서 생성/관리) */
-type PriceInput = Omit<GymPrice, "id" | "created_at" | "status">;
+/** 가격 항목 등록 입력값 (id, created_at, status 는 서버에서 생성/관리) */
+type PriceItemInput = Omit<GymPrice, "id" | "created_at" | "status">;
 
 interface UseSubmitPriceParams {
   /** 등록 성공 시 호출되는 콜백 */
-  onSuccess?: (created: GymPrice) => void;
+  onSuccess?: (created: GymPrice[]) => void;
 }
 
 interface UseSubmitPriceResult {
-  submit: (input: PriceInput) => Promise<void>;
+  submit: (items: PriceItemInput[]) => Promise<void>;
   isLoading: boolean;
   error: string | null;
 }
 
 /**
  * 가격 등록 훅 (비즈니스 로직 전담)
- * - 유효성 검사: price 4종(1/3/6/12개월) 중 최소 1개는 입력되어야 하며, 입력된 값은
- *   합리적 범위(음수/0/비정상적으로 큰 값 차단) 안에 있어야 한다.
- * - submitPrice() 호출 및 로딩/에러 상태 관리.
+ * - 한 번에 여러 항목(예: "1개월" + "PT 10회")을 등록할 수 있다.
+ * - 유효성 검사: 최소 1개 항목이 있어야 하며, 각 항목의 라벨/가격이 유효해야 한다.
+ * - submitPrices() 호출 및 로딩/에러 상태 관리.
  */
 export function useSubmitPrice({
   onSuccess,
@@ -35,19 +35,24 @@ export function useSubmitPrice({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit(input: PriceInput): Promise<void> {
-    // 유효성 검사: 최소 1개 입력 + 가격 범위(음수/0/비정상적 값 차단)
-    const validationError = validatePriceValues(input);
-    if (validationError) {
-      setError(validationError);
+  async function submit(items: PriceItemInput[]): Promise<void> {
+    if (items.length === 0) {
+      setError("최소 1개 이상의 가격을 입력해주세요.");
       return;
+    }
+    for (const item of items) {
+      const validationError = validatePriceItem(item);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const created = await submitPrice(input);
+      const created = await submitPrices(items);
       onSuccess?.(created);
     } catch (e) {
       // 알 수 없는 에러도 사용자에게 메시지로 보여준다.
@@ -113,8 +118,8 @@ interface UseEditPriceResult {
 }
 
 /**
- * 가격 수정/삭제 훅 (비즈니스 로직 전담)
- * - 마운트 시 기존 가격을 불러오고, 저장(검증 포함)/삭제를 처리한다.
+ * 가격 항목 수정/삭제 훅 (비즈니스 로직 전담)
+ * - 마운트 시 기존 가격 항목(라벨+가격+메모)을 불러오고, 저장(검증 포함)/삭제를 처리한다.
  * - 완료 시 onDone 콜백 호출(화면 닫기 등).
  */
 export function useEditPrice(
@@ -130,10 +135,8 @@ export function useEditPrice(
     getPrice(priceId)
       .then((price) =>
         setInitial({
-          price_1m: price.price_1m,
-          price_3m: price.price_3m,
-          price_6m: price.price_6m,
-          price_12m: price.price_12m,
+          label: price.label,
+          price: price.price,
           memo: price.memo,
         })
       )
@@ -145,7 +148,7 @@ export function useEditPrice(
   }, [priceId]);
 
   async function save(values: PriceValues): Promise<void> {
-    const validationError = validatePriceValues(values);
+    const validationError = validatePriceItem(values);
     if (validationError) {
       setError(validationError);
       return;

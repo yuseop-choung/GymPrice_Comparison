@@ -119,7 +119,8 @@ interface UseRegisterGymResult {
 
 /**
  * 헬스장 등록 훅 (비즈니스 로직 전담)
- * - 유효성 검사: 이름/주소 필수, 위경도는 유효한 숫자여야 한다.
+ * - 유효성 검사: 이름은 필수, 주소는 선택(검색으로 등록 시 자동으로 채워지지만
+ *   직접 입력 시에는 비워둘 수 있다), 위경도는 유효한 숫자여야 한다.
  */
 export function useRegisterGym({
   onSuccess,
@@ -128,8 +129,8 @@ export function useRegisterGym({
   const [error, setError] = useState<string | null>(null);
 
   async function submit(input: GymInput): Promise<void> {
-    if (input.name.trim() === "" || input.address.trim() === "") {
-      setError("헬스장 이름과 주소를 입력해주세요.");
+    if (input.name.trim() === "") {
+      setError("헬스장 이름을 입력해주세요.");
       return;
     }
     if (!Number.isFinite(input.lat) || !Number.isFinite(input.lng)) {

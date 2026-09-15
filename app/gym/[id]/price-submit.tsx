@@ -2,10 +2,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, ScrollView, StyleSheet, Text } from "react-native";
 import { colors } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
-import { PriceForm } from "../../../features/price/components/PriceForm";
+import type { PriceItemDraft } from "../../../features/price/components/PriceItemsForm";
+import { PriceItemsForm } from "../../../features/price/components/PriceItemsForm";
 import { useSubmitPrice } from "../../../features/price/hooks";
 import { useAuthStore } from "../../../store/authStore";
-import type { PriceValues } from "../../../types";
 
 /** 가격 등록 화면 — UI 전담, 검증/전송은 훅에 위임 */
 export default function PriceSubmitScreen() {
@@ -22,19 +22,29 @@ export default function PriceSubmitScreen() {
     },
   });
 
-  function handleSubmit(values: PriceValues) {
+  function handleSubmit(items: PriceItemDraft[]) {
     // 로그인 유저만 등록 가능 (RLS: auth.uid() = user_id)
     if (!user) {
       Alert.alert("로그인 필요", "가격을 등록하려면 로그인이 필요합니다.");
       return;
     }
-    submit({ gym_id: gymId, user_id: user.uid, ...values });
+    submit(
+      items.map((item) => ({
+        gym_id: gymId,
+        user_id: user.uid,
+        ...item,
+      }))
+    );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>가격 등록</Text>
-      <PriceForm
+      <Text style={styles.hint}>
+        가격을 입력한 항목만 등록됩니다. "+ 가격 항목 추가"로 PT 횟수권 등도 함께
+        등록할 수 있어요.
+      </Text>
+      <PriceItemsForm
         submitLabel="등록하기"
         isLoading={isLoading}
         error={error}
@@ -56,6 +66,11 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xl,
     fontWeight: "700",
     color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  hint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
 });

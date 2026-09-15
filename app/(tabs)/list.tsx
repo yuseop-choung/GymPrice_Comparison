@@ -38,7 +38,7 @@ export default function ListScreen() {
     const filtered =
       q === ""
         ? gyms
-        : gyms.filter((g) => g.name.includes(q) || g.address.includes(q));
+        : gyms.filter((g) => g.name.includes(q) || (g.address ?? "").includes(q));
 
     return [...filtered].sort((a, b) => {
       if (sortKey === "price") {

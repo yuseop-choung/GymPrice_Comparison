@@ -8,7 +8,7 @@ import { fontSize, spacing } from "../../../constants/layout";
 import { useTrackGymView } from "../../../features/analytics/hooks";
 import { GymActions } from "../../../features/gym/components/GymActions";
 import { GymDetailInfo } from "../../../features/gym/components/GymDetailInfo";
-import { PriceSummary } from "../../../features/gym/components/PriceSummary";
+import { GymPriceSection } from "../../../features/gym/components/GymPriceSection";
 import { useGymDetail } from "../../../features/gym/hooks";
 import { distanceKm, formatDistance } from "../../../features/gym/utils";
 import { useLocation } from "../../../hooks/useLocation";
@@ -16,8 +16,7 @@ import { useAuthStore } from "../../../store/authStore";
 
 /**
  * 헬스장 상세 화면 — UI 전담, 데이터 조회는 useGymDetail 훅에 위임
- * - 개별 제보(누가 얼마에 등록했는지)는 보여주지 않고, 관리자 승인된 가격 중
- *   기간별 최저가만 요약해서 보여준다.
+ * - 가격 표시(요약/상세 토글)는 GymPriceSection에 위임한다.
  */
 export default function GymDetailScreen() {
   const { id: gymId } = useLocalSearchParams<{ id: string }>();
@@ -40,7 +39,6 @@ export default function GymDetailScreen() {
   }
 
   const { gym, prices, detail } = data;
-  const approvedPrices = prices.filter((price) => price.status === "approved");
   const distance = formatDistance(
     distanceKm(coords.lat, coords.lng, gym.lat, gym.lng)
   );
@@ -49,7 +47,7 @@ export default function GymDetailScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.name}>{gym.name}</Text>
-        <Text style={styles.address}>{gym.address}</Text>
+        {gym.address ? <Text style={styles.address}>{gym.address}</Text> : null}
         <Text style={styles.distance}>현재 위치에서 {distance}</Text>
         {gym.phone ? <Text style={styles.phone}>{gym.phone}</Text> : null}
 
@@ -70,15 +68,7 @@ export default function GymDetailScreen() {
           }
         />
 
-        {approvedPrices.length > 0 ? (
-          <View style={styles.summaryWrap}>
-            <PriceSummary prices={approvedPrices} />
-          </View>
-        ) : (
-          <Text style={styles.empty}>
-            아직 승인된 가격이 없어요. 첫 가격을 등록해보세요!
-          </Text>
-        )}
+        <GymPriceSection prices={prices} />
       </ScrollView>
 
       <View style={styles.footer}>
@@ -104,9 +94,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  summaryWrap: {
-    marginTop: spacing.lg,
-  },
   name: {
     fontSize: fontSize.xl,
     fontWeight: "700",
@@ -126,11 +113,5 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-  },
-  empty: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.xl,
   },
 });

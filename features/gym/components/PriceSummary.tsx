@@ -20,7 +20,7 @@ export function PriceSummary({ prices }: PriceSummaryProps) {
       <Text style={styles.title}>가격 요약</Text>
 
       <View style={styles.headerRow}>
-        <Text style={[styles.cell, styles.period]}>기간</Text>
+        <Text style={[styles.cell, styles.period]}>항목</Text>
         <Text style={[styles.cell, styles.value]}>최저가</Text>
         <Text style={[styles.cell, styles.value]}>평균가</Text>
       </View>

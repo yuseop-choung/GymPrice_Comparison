@@ -16,7 +16,7 @@ export interface User {
 export interface Gym {
   id: string;
   name: string;
-  address: string;
+  address: string | null; // 선택 입력 (검색으로 등록하면 자동으로 채워짐)
   lat: number;
   lng: number;
   phone: string | null;
@@ -31,15 +31,19 @@ export interface GymWithPrice extends Gym {
 /** 가격 심사 상태 — 관리자가 승인(approved)한 가격만 다른 유저에게 공개 노출된다 */
 export type PriceStatus = "pending" | "approved" | "rejected";
 
-/** 헬스장 가격 (크라우드소싱으로 유저가 등록) */
+/**
+ * 헬스장 가격 항목 (크라우드소싱으로 유저가 등록)
+ * - 기간권(1/3/6/12개월)뿐 아니라 PT 횟수권 등도 등록할 수 있도록, 고정된
+ *   기간 컬럼 대신 자유 라벨(label) + 가격(price) 1건 = 1행 구조로 되어 있다.
+ * - 한 번의 등록 화면에서 여러 항목(예: 1개월 + PT 10회)을 등록하면, 각각
+ *   별도의 행으로 저장된다.
+ */
 export interface GymPrice {
   id: string;
   gym_id: string;
   user_id: string;
-  price_1m: number | null; // 1개월권
-  price_3m: number | null; // 3개월권
-  price_6m: number | null; // 6개월권
-  price_12m: number | null; // 12개월권
+  label: string; // 예: "1개월", "3개월", "PT 10회"
+  price: number;
   memo: string | null;
   status: PriceStatus;
   created_at: string;
@@ -50,11 +54,8 @@ export interface MyPriceItem extends GymPrice {
   gym_name: string;
 }
 
-/** 가격 입력값 (기간별 가격 + 메모) — 등록/수정 공용 */
-export type PriceValues = Pick<
-  GymPrice,
-  "price_1m" | "price_3m" | "price_6m" | "price_12m" | "memo"
->;
+/** 가격 항목 입력값 (등록/수정 공용) */
+export type PriceValues = Pick<GymPrice, "label" | "price" | "memo">;
 
 /**
  * 헬스장 부가 상세 정보
