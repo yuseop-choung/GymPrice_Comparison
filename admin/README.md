@@ -31,3 +31,10 @@ python -m http.server 5500
 ## 배포하고 싶다면
 
 정적 파일이라 Vercel/Netlify/GitHub Pages 아무데나 올려도 됩니다(빌드 설정 불필요, `index.html`만 있으면 됨).
+
+## style.css / shared.js를 고칠 때
+
+각 HTML 파일이 `style.css?v=2`, `shared.js?v=2`처럼 버전 쿼리를 붙여서 불러옵니다.
+브라우저가 예전 버전을 캐시해두고 안 바꾸는 걸 막기 위해서라, **이 두 파일을 수정할 때마다
+3개 HTML 파일(`index.html`/`dashboard.html`/`manage.html`)에서 `?v=` 뒤 숫자를 전부 하나씩
+올려주세요.**
