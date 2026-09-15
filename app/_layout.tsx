@@ -3,6 +3,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { HeaderBackButton } from "../components/ui/HeaderBackButton";
 import { useTrackAppOpen } from "../features/analytics/hooks";
 import { usePushRegistration } from "../features/notifications/hooks";
 import { useIsDarkMode, useThemeColors } from "../hooks/useThemeColors";
@@ -83,7 +84,13 @@ export default function RootLayout() {
         <Stack.Screen name="gym/[id]/index" options={{ title: "헬스장 상세" }} />
         <Stack.Screen
           name="gym/[id]/price-submit"
-          options={{ title: "가격 등록" }}
+          options={{
+            title: "가격 등록",
+            // 헬스장 등록 직후 router.replace로 곧바로 이 화면에 올 수도 있어
+            // (그 경우 스택 히스토리가 없어 기본 뒤로가기 화살표가 안 뜬다),
+            // 항상 동작하는 뒤로가기 버튼을 직접 넣는다.
+            headerLeft: () => <HeaderBackButton />,
+          }}
         />
         <Stack.Screen
           name="gym/[id]/price-edit"
