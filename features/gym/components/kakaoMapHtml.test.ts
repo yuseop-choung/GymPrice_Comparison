@@ -1,8 +1,4 @@
-// buildHtml은 WebView 렌더링과 무관한 순수 함수지만, 모듈을 import하면
-// react-native-webview의 네이티브 모듈도 함께 로드되므로 테스트 환경에서 목으로 대체한다.
-jest.mock("react-native-webview", () => ({ WebView: () => null }));
-
-import { buildHtml } from "./KakaoMap";
+import { buildHtml } from "./kakaoMapHtml";
 
 describe("buildHtml", () => {
   it("마커 이름에 </script>가 포함돼도 스크립트 태그를 조기 종료시키지 않는다", () => {

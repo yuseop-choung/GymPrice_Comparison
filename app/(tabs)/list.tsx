@@ -1,27 +1,21 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Input } from "../../components/ui/Input";
+import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { StateView } from "../../components/ui/StateView";
-import { colors } from "../../constants/colors";
+import type { ColorTheme } from "../../constants/colors";
 import { SEARCH_RADIUS_KM } from "../../constants/config";
-import { fontSize, radius, spacing } from "../../constants/layout";
+import { spacing } from "../../constants/layout";
 import { GymCard } from "../../features/gym/components/GymCard";
+import { GymListFilters, type SortKey } from "../../features/gym/components/GymListFilters";
 import { useNearbyGyms } from "../../features/gym/hooks";
 import { distanceKm } from "../../features/gym/utils";
 import { useLocation } from "../../hooks/useLocation";
+import { useThemeColors } from "../../hooks/useThemeColors";
 
-type SortKey = "distance" | "price";
-
-/** 리스트 화면 — 검색 + 정렬(거리순/최저가순). UI 전담 */
+/** 리스트 화면 — 검색 + 정렬(거리순/최저가순). UI 전담, 필터 입력은 GymListFilters에 위임 */
 export default function ListScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("distance");
@@ -55,31 +49,12 @@ export default function ListScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchBox}>
-        <Input
-          value={keyword}
-          onChangeText={setKeyword}
-          placeholder="헬스장 이름 / 지역 검색"
-        />
-        <View style={styles.sortRow}>
-          {(["distance", "price"] as const).map((key) => (
-            <Pressable
-              key={key}
-              onPress={() => setSortKey(key)}
-              style={[styles.chip, sortKey === key ? styles.chipActive : null]}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  sortKey === key ? styles.chipTextActive : null,
-                ]}
-              >
-                {key === "distance" ? "거리순" : "최저가순"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+      <GymListFilters
+        keyword={keyword}
+        onKeywordChange={setKeyword}
+        sortKey={sortKey}
+        onSortKeyChange={setSortKey}
+      />
 
       {isLoading && gyms.length === 0 ? (
         <StateView loading fill />
@@ -94,7 +69,12 @@ export default function ListScreen() {
           )}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={refetch}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
           }
           ListEmptyComponent={<StateView message="검색 결과가 없어요." />}
         />
@@ -103,41 +83,15 @@ export default function ListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  searchBox: {
-    padding: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  sortRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  chip: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  chipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  chipTextActive: {
-    color: colors.white,
-    fontWeight: "600",
-  },
-  listContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    listContent: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.lg,
+    },
+  });
+}

@@ -1,14 +1,23 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { colors } from "../../constants/colors";
+import { useThemeColors } from "../../hooks/useThemeColors";
 
 /** 하단 탭 네비게이션 — 홈 / 리스트 / 등록 / 내 정보 (4탭) */
 export default function TabsLayout() {
+  const colors = useThemeColors();
+
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
+        tabBarStyle: {
+          backgroundColor: colors.background,
+          borderTopColor: colors.border,
+        },
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen

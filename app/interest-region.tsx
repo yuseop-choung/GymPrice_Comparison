@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../constants/colors";
+import type { ColorTheme } from "../constants/colors";
 import { fontSize, spacing } from "../constants/layout";
 import { REGIONS } from "../constants/regions";
 import { InterestRegionListView } from "../features/user/components/InterestRegionListView";
 import { RegionList } from "../features/user/components/RegionList";
 import { MAX_INTEREST_REGIONS, useInterestRegions } from "../features/user/hooks";
+import { useThemeColors } from "../hooks/useThemeColors";
 
 type Step = "list" | "sido" | "sigungu";
 
@@ -16,6 +17,8 @@ type Step = "list" | "sido" | "sigungu";
  * - 실제 조회/추가/삭제 로직은 useInterestRegions 훅에 위임한다.
  */
 export default function InterestRegionScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { regions, isLoading, isSaving, error, add, remove } = useInterestRegions();
   const [step, setStep] = useState<Step>("list");
   const [pendingSido, setPendingSido] = useState<string | null>(null);
@@ -85,38 +88,40 @@ export default function InterestRegionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  center: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backRow: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  backText: {
-    fontSize: fontSize.md,
-    color: colors.primary,
-    fontWeight: "600",
-  },
-  overlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  error: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-    textAlign: "center",
-    padding: spacing.md,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    center: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    backRow: {
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+    },
+    backText: {
+      fontSize: fontSize.md,
+      color: colors.primary,
+      fontWeight: "600",
+    },
+    overlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.overlay,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    error: {
+      fontSize: fontSize.sm,
+      color: colors.error,
+      textAlign: "center",
+      padding: spacing.md,
+    },
+  });
+}

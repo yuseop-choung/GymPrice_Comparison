@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StyleSheet, Text } from "react-native";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { PriceValues } from "../../../types";
 
 /** 문자열을 숫자로 변환 (빈 값/숫자 아님 → 0. 범위 검증에서 걸러진다) */
@@ -34,6 +35,8 @@ export function PriceForm({
   onSubmit,
   onDelete,
 }: PriceFormProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [label, setLabel] = useState(initial.label);
   const [price, setPrice] = useState(String(initial.price));
   const [memo, setMemo] = useState(initial.memo ?? "");
@@ -82,16 +85,18 @@ export function PriceForm({
   );
 }
 
-const styles = StyleSheet.create({
-  error: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-    marginBottom: spacing.md,
-  },
-  delete: {
-    fontSize: fontSize.md,
-    color: colors.error,
-    textAlign: "center",
-    marginTop: spacing.lg,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    error: {
+      fontSize: fontSize.sm,
+      color: colors.error,
+      marginBottom: spacing.md,
+    },
+    delete: {
+      fontSize: fontSize.md,
+      color: colors.error,
+      textAlign: "center",
+      marginTop: spacing.lg,
+    },
+  });
+}

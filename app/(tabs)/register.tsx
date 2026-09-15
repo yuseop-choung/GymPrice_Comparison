@@ -1,23 +1,26 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
-import { colors } from "../../constants/colors";
-import { KAKAO_REST_KEY } from "../../constants/config";
+import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
-import { GymSearchResults } from "../../features/gym/components/GymSearchResults";
+import { GymSearchBox } from "../../features/gym/components/GymSearchBox";
 import { useRegisterGym } from "../../features/gym/hooks";
 import { useGymSearch } from "../../features/gym/useGymSearch";
 import { useLocation } from "../../hooks/useLocation";
+import { useThemeColors } from "../../hooks/useThemeColors";
 import type { KakaoPlace } from "../../lib/api/kakao";
 
 /**
  * 헬스장 등록 화면 — UI 전담, 검증/전송은 useRegisterGym 훅에 위임
  * - 위경도는 사용자가 직접 입력하지 않는다: 검색으로 장소를 선택하면 그 좌표를,
  *   선택하지 않고 이름/주소만 입력하면 현재 위치 좌표를 사용한다.
+ * - 장소 검색 입력/결과는 GymSearchBox에 위임한다.
  */
 export default function RegisterScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { coords } = useLocation();
 
@@ -74,24 +77,15 @@ export default function RegisterScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>헬스장 등록</Text>
 
-      <Input
-        label="헬스장 검색"
-        value={query}
-        onChangeText={handleQueryChange}
-        onSubmitEditing={() => search(query)}
-        placeholder="이름 또는 주소로 검색"
-        returnKeyType="search"
+      <GymSearchBox
+        query={query}
+        onQueryChange={handleQueryChange}
+        onSubmit={() => search(query)}
+        isSearching={isSearching}
+        searchError={searchError}
+        results={results}
+        onSelectResult={handleSelect}
       />
-      <Button title="검색" onPress={() => search(query)} loading={isSearching} />
-      {!KAKAO_REST_KEY ? (
-        <Text style={styles.hint}>
-          검색 기능을 사용하려면 카카오 REST API 키(EXPO_PUBLIC_KAKAO_REST_KEY)가
-          필요합니다. 없으면 아래 항목을 직접 입력해주세요.
-        </Text>
-      ) : null}
-      {searchError ? <Text style={styles.error}>{searchError}</Text> : null}
-
-      <GymSearchResults results={results} onSelect={handleSelect} />
 
       <Input
         label="헬스장 이름"
@@ -120,29 +114,25 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.lg,
-  },
-  title: {
-    fontSize: fontSize.xl,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: spacing.lg,
-  },
-  hint: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  error: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-    marginBottom: spacing.md,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: spacing.lg,
+    },
+    title: {
+      fontSize: fontSize.xl,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: spacing.lg,
+    },
+    error: {
+      fontSize: fontSize.sm,
+      color: colors.error,
+      marginBottom: spacing.md,
+    },
+  });
+}

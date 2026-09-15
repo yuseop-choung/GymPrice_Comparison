@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "../components/ui/Button";
-import { colors } from "../constants/colors";
-import { fontSize, spacing } from "../constants/layout";
+import type { ColorTheme } from "../constants/colors";
+import { fontSize, radius, spacing } from "../constants/layout";
+import { useThemeColors } from "../hooks/useThemeColors";
 import { useOnboardingStore } from "../store/onboardingStore";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -29,6 +31,8 @@ const FEATURES: { icon: IconName; title: string; desc: string }[] = [
 
 /** 온보딩 화면 — 최초 1회 노출, 시작하기 누르면 완료 처리(루트가 화면 전환) */
 export default function OnboardingScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const complete = useOnboardingStore((state) => state.complete);
 
   return (
@@ -39,7 +43,9 @@ export default function OnboardingScreen() {
       <View style={styles.features}>
         {FEATURES.map((feature) => (
           <View key={feature.title} style={styles.feature}>
-            <Ionicons name={feature.icon} size={28} color={colors.primary} />
+            <View style={styles.iconBadge}>
+              <Ionicons name={feature.icon} size={24} color={colors.primary} />
+            </View>
             <View style={styles.featureText}>
               <Text style={styles.featureTitle}>{feature.title}</Text>
               <Text style={styles.featureDesc}>{feature.desc}</Text>
@@ -53,46 +59,56 @@ export default function OnboardingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: spacing.xl,
-    justifyContent: "center",
-  },
-  logo: {
-    fontSize: fontSize.xl,
-    fontWeight: "700",
-    color: colors.primary,
-    textAlign: "center",
-  },
-  tagline: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  features: {
-    gap: spacing.lg,
-    marginBottom: spacing.xl,
-  },
-  feature: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  featureText: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  featureDesc: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: spacing.xl,
+      justifyContent: "center",
+    },
+    logo: {
+      fontSize: fontSize.xxl,
+      fontWeight: "700",
+      color: colors.primary,
+      textAlign: "center",
+    },
+    tagline: {
+      fontSize: fontSize.md,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginTop: spacing.sm,
+      marginBottom: spacing.xl,
+    },
+    features: {
+      gap: spacing.lg,
+      marginBottom: spacing.xl,
+    },
+    feature: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+    },
+    iconBadge: {
+      width: 48,
+      height: 48,
+      borderRadius: radius.lg,
+      backgroundColor: colors.primaryMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    featureText: {
+      flex: 1,
+    },
+    featureTitle: {
+      fontSize: fontSize.lg,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    featureDesc: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+    },
+  });
+}

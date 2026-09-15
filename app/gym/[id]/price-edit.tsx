@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,13 +8,16 @@ import {
   Text,
   View,
 } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
 import { PriceForm } from "../../../features/price/components/PriceForm";
 import { useEditPrice } from "../../../features/price/hooks";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 
 /** 가격 수정/삭제 화면 — UI 전담, 로드/저장/삭제는 useEditPrice 훅에 위임 */
 export default function PriceEditScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { priceId } = useLocalSearchParams<{ id: string; priceId: string }>();
   const router = useRouter();
 
@@ -60,28 +64,30 @@ export default function PriceEditScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.lg,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-  },
-  title: {
-    fontSize: fontSize.xl,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: spacing.lg,
-  },
-  error: {
-    fontSize: fontSize.md,
-    color: colors.error,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: spacing.lg,
+    },
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+    },
+    title: {
+      fontSize: fontSize.xl,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: spacing.lg,
+    },
+    error: {
+      fontSize: fontSize.md,
+      color: colors.error,
+    },
+  });
+}

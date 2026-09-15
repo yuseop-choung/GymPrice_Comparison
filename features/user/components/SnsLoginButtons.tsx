@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 
 /**
  * SNS 로그인 버튼 묶음 (UI 전담)
@@ -17,10 +19,17 @@ export function SnsLoginButtons({
   onNaver,
   disabled = false,
 }: SnsLoginButtonsProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.container}>
       <Pressable
-        style={[styles.button, styles.google]}
+        style={({ pressed }) => [
+          styles.button,
+          styles.google,
+          pressed ? styles.pressed : null,
+        ]}
         onPress={onGoogle}
         disabled={disabled}
       >
@@ -28,7 +37,11 @@ export function SnsLoginButtons({
       </Pressable>
 
       <Pressable
-        style={[styles.button, styles.naver]}
+        style={({ pressed }) => [
+          styles.button,
+          styles.naver,
+          pressed ? styles.pressed : null,
+        ]}
         onPress={onNaver}
         disabled={disabled}
       >
@@ -38,32 +51,37 @@ export function SnsLoginButtons({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.sm,
-  },
-  button: {
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  google: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.googleBorder,
-  },
-  googleText: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  naver: {
-    backgroundColor: colors.naver,
-  },
-  naverText: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.white,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      gap: spacing.sm,
+    },
+    button: {
+      paddingVertical: spacing.md,
+      borderRadius: radius.md,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pressed: {
+      opacity: 0.85,
+    },
+    google: {
+      backgroundColor: colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: colors.googleBorder,
+    },
+    googleText: {
+      fontSize: fontSize.md,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    naver: {
+      backgroundColor: colors.naver,
+    },
+    naverText: {
+      fontSize: fontSize.md,
+      fontWeight: "600",
+      color: colors.white,
+    },
+  });
+}

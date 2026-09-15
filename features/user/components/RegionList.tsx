@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 
 /**
  * 지역 선택용 단일 리스트 (UI 전담)
@@ -13,12 +15,22 @@ interface RegionListProps {
 }
 
 export function RegionList({ items, selected, onSelect }: RegionListProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <FlatList
       data={items}
       keyExtractor={(item) => item}
       renderItem={({ item }) => (
-        <Pressable style={styles.row} onPress={() => onSelect(item)}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.row,
+            item === selected ? styles.selectedRow : null,
+            pressed ? styles.pressed : null,
+          ]}
+          onPress={() => onSelect(item)}
+        >
           <Text style={[styles.text, item === selected ? styles.selectedText : null]}>
             {item}
           </Text>
@@ -29,27 +41,35 @@ export function RegionList({ items, selected, onSelect }: RegionListProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  text: {
-    fontSize: fontSize.md,
-    color: colors.text,
-  },
-  selectedText: {
-    color: colors.primary,
-    fontWeight: "600",
-  },
-  check: {
-    fontSize: fontSize.md,
-    color: colors.primary,
-    fontWeight: "700",
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    selectedRow: {
+      backgroundColor: colors.primaryMuted,
+    },
+    pressed: {
+      opacity: 0.7,
+    },
+    text: {
+      fontSize: fontSize.md,
+      color: colors.text,
+    },
+    selectedText: {
+      color: colors.primary,
+      fontWeight: "600",
+    },
+    check: {
+      fontSize: fontSize.md,
+      color: colors.primary,
+      fontWeight: "700",
+    },
+  });
+}

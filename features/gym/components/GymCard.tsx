@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../../constants/colors";
-import { fontSize, radius, spacing } from "../../../constants/layout";
+import type { ColorTheme } from "../../../constants/colors";
+import { elevation, fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { GymWithPrice } from "../../../types";
 import { formatPrice } from "../../price/utils";
 
@@ -14,6 +16,9 @@ interface GymCardProps {
 }
 
 export function GymCard({ gym, onPress }: GymCardProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <Pressable
       onPress={onPress}
@@ -28,46 +33,60 @@ export function GymCard({ gym, onPress }: GymCardProps) {
         </Text>
       ) : null}
 
-      {gym.lowest_price_1m !== null ? (
-        <Text style={styles.price}>
-          1개월 최저 {formatPrice(gym.lowest_price_1m)}
-        </Text>
-      ) : (
-        <Text style={styles.noPrice}>가격 정보 없음</Text>
-      )}
+      <View style={styles.priceRow}>
+        {gym.lowest_price_1m !== null ? (
+          <>
+            <Text style={styles.priceLabel}>1개월 최저</Text>
+            <Text style={styles.price}>{formatPrice(gym.lowest_price_1m)}</Text>
+          </>
+        ) : (
+          <Text style={styles.noPrice}>가격 정보 없음</Text>
+        )}
+      </View>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  name: {
-    fontSize: fontSize.lg,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  address: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  price: {
-    fontSize: fontSize.md,
-    fontWeight: "700",
-    color: colors.primary,
-    marginTop: spacing.sm,
-  },
-  noPrice: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: radius.lg,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+      ...elevation(colors.shadow),
+    },
+    pressed: {
+      opacity: 0.8,
+    },
+    name: {
+      fontSize: fontSize.lg,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    address: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+    },
+    priceRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: spacing.xs,
+      marginTop: spacing.sm,
+    },
+    priceLabel: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+    },
+    price: {
+      fontSize: fontSize.md,
+      fontWeight: "700",
+      color: colors.primary,
+    },
+    noPrice: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+    },
+  });
+}

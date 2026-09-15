@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -9,9 +9,10 @@ import {
 } from "react-native";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, spacing } from "../../../constants/layout";
 import { useEditGymDetail } from "../../../features/gym/hooks";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { GymDetailValues } from "../../../types";
 
 /** 문자열을 정수 | null 로 변환 (빈 값/숫자 아님 → null) */
@@ -24,6 +25,8 @@ function parseInt2(value: string): number | null {
 
 /** 헬스장 부가정보 수정 화면 — UI 전담, 로드/저장은 훅에 위임 */
 export default function GymDetailEditScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id: gymId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { initial, error, isBusy, save } = useEditGymDetail(gymId, () =>
@@ -53,6 +56,8 @@ function DetailForm({
   isBusy: boolean;
   onSave: (values: GymDetailValues) => void;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [brand, setBrand] = useState(initial.equipment_brand ?? "");
   const [cleanliness, setCleanliness] = useState(
     initial.cleanliness != null ? String(initial.cleanliness) : ""
@@ -109,29 +114,31 @@ function DetailForm({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.lg,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-  },
-  title: {
-    fontSize: fontSize.xl,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: spacing.lg,
-  },
-  error: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-    marginBottom: spacing.md,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: spacing.lg,
+    },
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+    },
+    title: {
+      fontSize: fontSize.xl,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: spacing.lg,
+    },
+    error: {
+      fontSize: fontSize.sm,
+      color: colors.error,
+      marginBottom: spacing.md,
+    },
+  });
+}

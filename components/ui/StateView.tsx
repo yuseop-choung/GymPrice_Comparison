@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../constants/colors";
+import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
+import { useThemeColors } from "../../hooks/useThemeColors";
 
 /**
  * 로딩/빈/에러 상태 공용 표시 컴포넌트 (UI 전담)
@@ -14,6 +16,9 @@ interface StateViewProps {
 }
 
 export function StateView({ loading, message, fill = false }: StateViewProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={fill ? styles.fill : styles.inline}>
       {loading ? (
@@ -25,22 +30,24 @@ export function StateView({ loading, message, fill = false }: StateViewProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-    padding: spacing.lg,
-  },
-  inline: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.xl,
-  },
-  message: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    fill: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+      padding: spacing.lg,
+    },
+    inline: {
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing.xl,
+    },
+    message: {
+      fontSize: fontSize.md,
+      color: colors.textSecondary,
+      textAlign: "center",
+    },
+  });
+}

@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../../constants/colors";
+import type { ColorTheme } from "../../../constants/colors";
 import { fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { InterestRegion } from "../../../types";
 
 /**
@@ -20,6 +22,9 @@ export function InterestRegionListView({
   onAdd,
   onRemove,
 }: InterestRegionListViewProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.guide}>
@@ -54,57 +59,58 @@ export function InterestRegionListView({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    padding: spacing.lg,
-  },
-  guide: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-  },
-  empty: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginBottom: spacing.lg,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    marginBottom: spacing.sm,
-  },
-  rowText: {
-    fontSize: fontSize.md,
-    color: colors.text,
-    fontWeight: "600",
-  },
-  remove: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-  },
-  addButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.sm,
-  },
-  addText: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  limitNote: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    container: {
+      padding: spacing.lg,
+    },
+    guide: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginBottom: spacing.lg,
+    },
+    empty: {
+      fontSize: fontSize.md,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginBottom: spacing.lg,
+    },
+    row: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      marginBottom: spacing.sm,
+    },
+    rowText: {
+      fontSize: fontSize.md,
+      color: colors.text,
+      fontWeight: "600",
+    },
+    remove: {
+      fontSize: fontSize.sm,
+      color: colors.error,
+    },
+    addButton: {
+      alignSelf: "flex-start",
+      backgroundColor: colors.primaryMuted,
+      borderRadius: radius.md,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.sm,
+    },
+    addText: {
+      fontSize: fontSize.sm,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    limitNote: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginTop: spacing.sm,
+    },
+  });
+}

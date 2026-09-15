@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../../constants/colors";
-import { fontSize, radius, spacing } from "../../../constants/layout";
+import type { ColorTheme } from "../../../constants/colors";
+import { elevation, fontSize, radius, spacing } from "../../../constants/layout";
+import { useThemeColors } from "../../../hooks/useThemeColors";
 import type { GymDetail } from "../../../types";
 
 /**
@@ -13,6 +15,9 @@ interface GymDetailInfoProps {
 }
 
 export function GymDetailInfo({ detail, onEdit }: GymDetailInfoProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const rows = [
     { label: "장비 브랜드", value: detail?.equipment_brand ?? "-" },
     {
@@ -29,8 +34,12 @@ export function GymDetailInfo({ detail, onEdit }: GymDetailInfoProps) {
     <View style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>부가정보</Text>
-        <Pressable onPress={onEdit}>
-          <Text style={styles.edit}>{detail ? "수정" : "추가"}</Text>
+        <Pressable onPress={onEdit} hitSlop={8}>
+          {({ pressed }) => (
+            <Text style={[styles.edit, pressed ? styles.editPressed : null]}>
+              {detail ? "수정" : "추가"}
+            </Text>
+          )}
         </Pressable>
       </View>
 
@@ -46,45 +55,51 @@ export function GymDetailInfo({ detail, onEdit }: GymDetailInfoProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-  },
-  title: {
-    fontSize: fontSize.lg,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  edit: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: spacing.xs,
-  },
-  label: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-  },
-  value: {
-    fontSize: fontSize.md,
-    color: colors.text,
-  },
-  memo: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTheme) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: radius.lg,
+      padding: spacing.md,
+      marginTop: spacing.lg,
+      ...elevation(colors.shadow),
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: spacing.sm,
+    },
+    title: {
+      fontSize: fontSize.lg,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    edit: {
+      fontSize: fontSize.md,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    editPressed: {
+      opacity: 0.6,
+    },
+    row: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingVertical: spacing.xs,
+    },
+    label: {
+      fontSize: fontSize.md,
+      color: colors.textSecondary,
+    },
+    value: {
+      fontSize: fontSize.md,
+      color: colors.text,
+    },
+    memo: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginTop: spacing.sm,
+    },
+  });
+}
