@@ -1,4 +1,5 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,16 +17,17 @@ import { useResetPassword } from "../../features/user/hooks";
 import { useThemeColors } from "../../hooks/useThemeColors";
 
 /**
- * 비밀번호 재설정 링크로 진입하는 화면 (딥링크: reset-password?token_hash=...)
- * - UI 전담, 토큰 검증/비밀번호 변경은 useResetPassword 훅에 위임.
+ * 비밀번호 재설정 링크로 진입하는 화면 (딥링크: reset-password#access_token=...)
+ * - UI 전담, 세션 복원/비밀번호 변경은 useResetPassword 훅에 위임.
  * - 검증 중 → 새 비밀번호 입력 → (성공 시) authStore 반영으로 루트가 홈으로 전환.
+ * - Linking.useURL()로 앱을 연 딥링크의 전체 URL(쿼리+해시)을 그대로 훅에 넘긴다.
  */
 export default function ResetPasswordScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
-  const { token_hash } = useLocalSearchParams<{ token_hash?: string }>();
-  const { stage, isSaving, error, submit } = useResetPassword(token_hash);
+  const url = Linking.useURL();
+  const { stage, isSaving, error, submit } = useResetPassword(url);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 

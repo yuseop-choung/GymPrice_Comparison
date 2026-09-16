@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   getCurrentUser,
   requestPasswordReset,
+  restorePasswordResetSession,
   signInWithEmail,
   signInWithOAuth,
   signUpWithEmail,
   updatePassword,
   updateUserLocation,
-  verifyPasswordResetToken,
 } from "../../lib/api/auth";
 import {
   addInterestRegion,
@@ -143,25 +143,25 @@ interface UseResetPasswordResult {
 
 /**
  * 비밀번호 재설정 링크로 들어온 뒤 새 비밀번호를 설정하는 훅 (비즈니스 로직 전담)
- * - 마운트 시 token_hash를 검증(verifyPasswordResetToken)하고, 성공해야만 새
- *   비밀번호를 입력받는다.
+ * - 마운트 시 딥링크 URL로 세션을 복원(restorePasswordResetSession)하고,
+ *   성공해야만 새 비밀번호를 입력받는다.
  * - 비밀번호 변경(updatePassword)까지 성공해야 authStore에 로그인 상태를 반영한다
  *   — 링크만 열고 비밀번호를 바꾸지 않은 상태로는 앱에 로그인되지 않는다(루트
  *   레이아웃이 로그인 여부로 화면을 전환하므로, 로그인 반영 시점에 자연스럽게 홈으로 넘어간다).
  */
-export function useResetPassword(tokenHash: string | undefined): UseResetPasswordResult {
+export function useResetPassword(url: string | null): UseResetPasswordResult {
   const setUser = useAuthStore((state) => state.setUser);
   const [stage, setStage] = useState<ResetPasswordStage>("verifying");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!tokenHash) {
+    if (!url) {
       setStage("invalid");
       setError("재설정 링크가 올바르지 않습니다. 다시 요청해주세요.");
       return;
     }
-    verifyPasswordResetToken(tokenHash)
+    restorePasswordResetSession(url)
       .then(() => setStage("ready"))
       .catch((e) => {
         setStage("invalid");
@@ -171,7 +171,7 @@ export function useResetPassword(tokenHash: string | undefined): UseResetPasswor
             : "링크가 만료되었거나 이미 사용됐습니다. 다시 요청해주세요."
         );
       });
-  }, [tokenHash]);
+  }, [url]);
 
   async function submit(password: string, confirm: string): Promise<void> {
     if (password.length < 6) {

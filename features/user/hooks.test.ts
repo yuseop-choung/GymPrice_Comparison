@@ -2,12 +2,12 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 import {
   getCurrentUser,
   requestPasswordReset,
+  restorePasswordResetSession,
   signInWithEmail,
   signInWithOAuth,
   signUpWithEmail,
   updatePassword,
   updateUserLocation,
-  verifyPasswordResetToken,
 } from "../../lib/api/auth";
 import {
   addInterestRegion,
@@ -31,7 +31,7 @@ jest.mock("../../lib/api/auth", () => ({
   signUpWithEmail: jest.fn(),
   updateUserLocation: jest.fn().mockResolvedValue(undefined),
   requestPasswordReset: jest.fn(),
-  verifyPasswordResetToken: jest.fn(),
+  restorePasswordResetSession: jest.fn(),
   updatePassword: jest.fn(),
   getCurrentUser: jest.fn(),
 }));
@@ -50,7 +50,7 @@ const signInWithEmailMock = signInWithEmail as jest.Mock;
 const signUpWithEmailMock = signUpWithEmail as jest.Mock;
 const signInWithOAuthMock = signInWithOAuth as jest.Mock;
 const requestPasswordResetMock = requestPasswordReset as jest.Mock;
-const verifyPasswordResetTokenMock = verifyPasswordResetToken as jest.Mock;
+const restorePasswordResetSessionMock = restorePasswordResetSession as jest.Mock;
 const updatePasswordMock = updatePassword as jest.Mock;
 const getCurrentUserMock = getCurrentUser as jest.Mock;
 
@@ -226,40 +226,42 @@ describe("useForgotPassword", () => {
   });
 });
 
+const RESET_URL = "gymprice://reset-password#access_token=a&refresh_token=b";
+
 describe("useResetPassword", () => {
   beforeEach(() => {
-    verifyPasswordResetTokenMock.mockReset();
+    restorePasswordResetSessionMock.mockReset();
     updatePasswordMock.mockReset();
     getCurrentUserMock.mockReset();
     useAuthStore.setState({ user: null });
   });
 
-  it("token_hash가 없으면 검증을 시도하지 않고 invalid 상태가 된다", async () => {
-    const { result } = await renderHook(() => useResetPassword(undefined));
+  it("url이 없으면 세션 복원을 시도하지 않고 invalid 상태가 된다", async () => {
+    const { result } = await renderHook(() => useResetPassword(null));
 
     await waitFor(() => expect(result.current.stage).toBe("invalid"));
-    expect(verifyPasswordResetTokenMock).not.toHaveBeenCalled();
+    expect(restorePasswordResetSessionMock).not.toHaveBeenCalled();
   });
 
-  it("토큰 검증에 성공하면 ready 상태가 된다", async () => {
-    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
-    const { result } = await renderHook(() => useResetPassword("token-1"));
+  it("세션 복원에 성공하면 ready 상태가 된다", async () => {
+    restorePasswordResetSessionMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useResetPassword(RESET_URL));
 
     await waitFor(() => expect(result.current.stage).toBe("ready"));
-    expect(verifyPasswordResetTokenMock).toHaveBeenCalledWith("token-1");
+    expect(restorePasswordResetSessionMock).toHaveBeenCalledWith(RESET_URL);
   });
 
-  it("토큰 검증에 실패하면 invalid 상태가 된다", async () => {
-    verifyPasswordResetTokenMock.mockRejectedValue(new Error("만료됨"));
-    const { result } = await renderHook(() => useResetPassword("token-1"));
+  it("세션 복원에 실패하면 invalid 상태가 된다", async () => {
+    restorePasswordResetSessionMock.mockRejectedValue(new Error("만료됨"));
+    const { result } = await renderHook(() => useResetPassword(RESET_URL));
 
     await waitFor(() => expect(result.current.stage).toBe("invalid"));
     expect(result.current.error).toBe("만료됨");
   });
 
   it("비밀번호가 6자 미만이면 변경을 시도하지 않는다", async () => {
-    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
-    const { result } = await renderHook(() => useResetPassword("token-1"));
+    restorePasswordResetSessionMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useResetPassword(RESET_URL));
     await waitFor(() => expect(result.current.stage).toBe("ready"));
 
     await act(async () => {
@@ -271,8 +273,8 @@ describe("useResetPassword", () => {
   });
 
   it("두 비밀번호가 다르면 변경을 시도하지 않는다", async () => {
-    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
-    const { result } = await renderHook(() => useResetPassword("token-1"));
+    restorePasswordResetSessionMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useResetPassword(RESET_URL));
     await waitFor(() => expect(result.current.stage).toBe("ready"));
 
     await act(async () => {
@@ -284,10 +286,10 @@ describe("useResetPassword", () => {
   });
 
   it("변경에 성공하면 authStore에 로그인 상태를 반영한다", async () => {
-    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
+    restorePasswordResetSessionMock.mockResolvedValue(undefined);
     updatePasswordMock.mockResolvedValue(undefined);
     getCurrentUserMock.mockResolvedValue(USER);
-    const { result } = await renderHook(() => useResetPassword("token-1"));
+    const { result } = await renderHook(() => useResetPassword(RESET_URL));
     await waitFor(() => expect(result.current.stage).toBe("ready"));
 
     await act(async () => {
