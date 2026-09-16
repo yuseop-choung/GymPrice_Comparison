@@ -1,9 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import {
+  getCurrentUser,
+  requestPasswordReset,
   signInWithEmail,
   signInWithOAuth,
   signUpWithEmail,
+  updatePassword,
   updateUserLocation,
+  verifyPasswordResetToken,
 } from "../../lib/api/auth";
 import {
   addInterestRegion,
@@ -12,7 +16,13 @@ import {
 } from "../../lib/api/interestRegions";
 import { useAuthStore } from "../../store/authStore";
 import type { InterestRegion, User } from "../../types";
-import { useAuth, useInterestRegions, useSyncUserLocation } from "./hooks";
+import {
+  useAuth,
+  useForgotPassword,
+  useInterestRegions,
+  useResetPassword,
+  useSyncUserLocation,
+} from "./hooks";
 
 // api 모듈을 목으로 대체 (실제 supabase 로드 방지)
 jest.mock("../../lib/api/auth", () => ({
@@ -20,6 +30,10 @@ jest.mock("../../lib/api/auth", () => ({
   signInWithOAuth: jest.fn(),
   signUpWithEmail: jest.fn(),
   updateUserLocation: jest.fn().mockResolvedValue(undefined),
+  requestPasswordReset: jest.fn(),
+  verifyPasswordResetToken: jest.fn(),
+  updatePassword: jest.fn(),
+  getCurrentUser: jest.fn(),
 }));
 
 jest.mock("../../lib/api/interestRegions", () => ({
@@ -35,6 +49,10 @@ const removeInterestRegionMock = removeInterestRegion as jest.Mock;
 const signInWithEmailMock = signInWithEmail as jest.Mock;
 const signUpWithEmailMock = signUpWithEmail as jest.Mock;
 const signInWithOAuthMock = signInWithOAuth as jest.Mock;
+const requestPasswordResetMock = requestPasswordReset as jest.Mock;
+const verifyPasswordResetTokenMock = verifyPasswordResetToken as jest.Mock;
+const updatePasswordMock = updatePassword as jest.Mock;
+const getCurrentUserMock = getCurrentUser as jest.Mock;
 
 const USER: User = {
   uid: "user-1",
@@ -163,6 +181,122 @@ describe("useAuth", () => {
 
     expect(signInWithEmailMock).not.toHaveBeenCalled();
     expect(result.current.error).toBe("이메일과 비밀번호를 입력해주세요.");
+  });
+});
+
+describe("useForgotPassword", () => {
+  beforeEach(() => {
+    requestPasswordResetMock.mockReset();
+  });
+
+  it("이메일을 입력하면 요청하고 성공 상태로 바꾼다", async () => {
+    requestPasswordResetMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useForgotPassword());
+
+    await act(async () => {
+      await result.current.submit("a@a.com");
+    });
+
+    expect(requestPasswordResetMock).toHaveBeenCalledWith("a@a.com");
+    expect(result.current.success).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("이메일이 비어있으면 API를 호출하지 않는다", async () => {
+    const { result } = await renderHook(() => useForgotPassword());
+
+    await act(async () => {
+      await result.current.submit("  ");
+    });
+
+    expect(requestPasswordResetMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("이메일을 입력해주세요.");
+  });
+
+  it("요청 자체가 실패하면(네트워크 오류 등) 에러 메시지를 채운다", async () => {
+    requestPasswordResetMock.mockRejectedValue(new Error("네트워크 오류"));
+    const { result } = await renderHook(() => useForgotPassword());
+
+    await act(async () => {
+      await result.current.submit("a@a.com");
+    });
+
+    expect(result.current.error).toBe("네트워크 오류");
+    expect(result.current.success).toBe(false);
+  });
+});
+
+describe("useResetPassword", () => {
+  beforeEach(() => {
+    verifyPasswordResetTokenMock.mockReset();
+    updatePasswordMock.mockReset();
+    getCurrentUserMock.mockReset();
+    useAuthStore.setState({ user: null });
+  });
+
+  it("token_hash가 없으면 검증을 시도하지 않고 invalid 상태가 된다", async () => {
+    const { result } = await renderHook(() => useResetPassword(undefined));
+
+    await waitFor(() => expect(result.current.stage).toBe("invalid"));
+    expect(verifyPasswordResetTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("토큰 검증에 성공하면 ready 상태가 된다", async () => {
+    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useResetPassword("token-1"));
+
+    await waitFor(() => expect(result.current.stage).toBe("ready"));
+    expect(verifyPasswordResetTokenMock).toHaveBeenCalledWith("token-1");
+  });
+
+  it("토큰 검증에 실패하면 invalid 상태가 된다", async () => {
+    verifyPasswordResetTokenMock.mockRejectedValue(new Error("만료됨"));
+    const { result } = await renderHook(() => useResetPassword("token-1"));
+
+    await waitFor(() => expect(result.current.stage).toBe("invalid"));
+    expect(result.current.error).toBe("만료됨");
+  });
+
+  it("비밀번호가 6자 미만이면 변경을 시도하지 않는다", async () => {
+    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useResetPassword("token-1"));
+    await waitFor(() => expect(result.current.stage).toBe("ready"));
+
+    await act(async () => {
+      await result.current.submit("123", "123");
+    });
+
+    expect(updatePasswordMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("비밀번호는 6자 이상이어야 합니다.");
+  });
+
+  it("두 비밀번호가 다르면 변경을 시도하지 않는다", async () => {
+    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useResetPassword("token-1"));
+    await waitFor(() => expect(result.current.stage).toBe("ready"));
+
+    await act(async () => {
+      await result.current.submit("password1", "password2");
+    });
+
+    expect(updatePasswordMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("비밀번호가 일치하지 않습니다.");
+  });
+
+  it("변경에 성공하면 authStore에 로그인 상태를 반영한다", async () => {
+    verifyPasswordResetTokenMock.mockResolvedValue(undefined);
+    updatePasswordMock.mockResolvedValue(undefined);
+    getCurrentUserMock.mockResolvedValue(USER);
+    const { result } = await renderHook(() => useResetPassword("token-1"));
+    await waitFor(() => expect(result.current.stage).toBe("ready"));
+
+    await act(async () => {
+      await result.current.submit("newpassword1", "newpassword1");
+    });
+
+    expect(updatePasswordMock).toHaveBeenCalledWith("newpassword1");
+    expect(useAuthStore.getState().user).toEqual(USER);
+    expect(result.current.error).toBeNull();
   });
 });
 
