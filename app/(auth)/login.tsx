@@ -7,6 +7,7 @@ import { Input } from "../../components/ui/Input";
 import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
 import { AuthModeToggle } from "../../features/user/components/AuthModeToggle";
+import { ForgotPasswordLink } from "../../features/user/components/ForgotPasswordLink";
 import { SnsLoginButtons } from "../../features/user/components/SnsLoginButtons";
 import { useAuth } from "../../features/user/hooks";
 import { useThemeColors } from "../../hooks/useThemeColors";
@@ -65,6 +66,8 @@ export default function LoginScreen() {
           checked={keepLoggedIn}
           onChange={setKeepLoggedIn}
         />
+
+        {!isSignUp ? <ForgotPasswordLink /> : null}
 
         {isSignUp ? (
           <Input

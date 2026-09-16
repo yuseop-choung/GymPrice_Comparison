@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  getCurrentUser,
+  requestPasswordReset,
+  restorePasswordResetSession,
   signInWithEmail,
   signInWithOAuth,
   signUpWithEmail,
+  updatePassword,
   updateUserLocation,
 } from "../../lib/api/auth";
 import {
@@ -87,6 +91,119 @@ export function useAuth(): UseAuthResult {
     loginWithGoogle: () => run(() => signInWithOAuth("google"), true),
     loginWithNaver: () => run(() => signInWithOAuth("naver"), true),
   };
+}
+
+interface UseForgotPasswordResult {
+  isLoading: boolean;
+  error: string | null;
+  /** 요청이 성공적으로 접수됐는지 (계정 존재 여부는 노출하지 않고 항상 같은 안내를 보여준다) */
+  success: boolean;
+  submit: (email: string) => Promise<void>;
+}
+
+/**
+ * 비밀번호 재설정 이메일 요청 훅 (비즈니스 로직 전담)
+ * - 계정 존재 여부를 노출하지 않기 위해, 성공/실패와 무관하게 동일한 성공 안내를
+ *   보여준다(요청 자체가 실패한 네트워크 오류 등은 예외적으로 에러로 알려준다).
+ */
+export function useForgotPassword(): UseForgotPasswordResult {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  async function submit(email: string): Promise<void> {
+    if (email.trim() === "") {
+      setError("이메일을 입력해주세요.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      await requestPasswordReset(email.trim());
+      setSuccess(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "요청에 실패했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return { isLoading, error, success, submit };
+}
+
+/** 재설정 화면의 단계: 링크 검증 중 / 검증 완료(새 비밀번호 입력 가능) / 링크가 유효하지 않음 */
+type ResetPasswordStage = "verifying" | "ready" | "invalid";
+
+interface UseResetPasswordResult {
+  stage: ResetPasswordStage;
+  isSaving: boolean;
+  error: string | null;
+  submit: (password: string, confirm: string) => Promise<void>;
+}
+
+/**
+ * 비밀번호 재설정 링크로 들어온 뒤 새 비밀번호를 설정하는 훅 (비즈니스 로직 전담)
+ * - 마운트 시 딥링크 URL로 세션을 복원(restorePasswordResetSession)하고,
+ *   성공해야만 새 비밀번호를 입력받는다.
+ * - 비밀번호 변경(updatePassword)까지 성공해야 authStore에 로그인 상태를 반영한다
+ *   — 링크만 열고 비밀번호를 바꾸지 않은 상태로는 앱에 로그인되지 않는다(루트
+ *   레이아웃이 로그인 여부로 화면을 전환하므로, 로그인 반영 시점에 자연스럽게 홈으로 넘어간다).
+ * - url은 "아직 확인 전"(undefined) / "확인했는데 없음"(null) / "있음"(string)을
+ *   구분해서 받는다. Linking으로 앱을 연 URL은 비동기로 한 틱 뒤에 확정되는데,
+ *   이 구분이 없으면 그 사이 짧게 undefined를 null처럼 취급해 정상 링크로 들어와도
+ *   "링크가 올바르지 않다"는 에러가 잠깐 잘못 뜬다.
+ */
+export function useResetPassword(
+  url: string | null | undefined
+): UseResetPasswordResult {
+  const setUser = useAuthStore((state) => state.setUser);
+  const [stage, setStage] = useState<ResetPasswordStage>("verifying");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (url === undefined) return; // 아직 확인 전 — verifying 상태 유지
+    if (url === null) {
+      setStage("invalid");
+      setError("재설정 링크가 올바르지 않습니다. 다시 요청해주세요.");
+      return;
+    }
+    setStage("verifying");
+    restorePasswordResetSession(url)
+      .then(() => setStage("ready"))
+      .catch((e) => {
+        setStage("invalid");
+        setError(
+          e instanceof Error
+            ? e.message
+            : "링크가 만료되었거나 이미 사용됐습니다. 다시 요청해주세요."
+        );
+      });
+  }, [url]);
+
+  async function submit(password: string, confirm: string): Promise<void> {
+    if (password.length < 6) {
+      setError("비밀번호는 6자 이상이어야 합니다.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    setIsSaving(true);
+    setError(null);
+    try {
+      await updatePassword(password);
+      const profile = await getCurrentUser();
+      setUser(profile, true); // 재설정 완료 후 곧바로 로그인 상태로 전환
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "비밀번호 변경에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return { stage, isSaving, error, submit };
 }
 
 /**

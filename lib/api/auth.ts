@@ -160,6 +160,79 @@ export async function updateUserLocation(
 }
 
 /**
+ * 비밀번호 재설정 이메일 요청
+ * - Supabase Auth가 자체적으로 재설정 링크 이메일을 보낸다(기본(커스텀 SMTP 없이도
+ *   쓸 수 있는) 템플릿 그대로 사용 — 별도 이메일 발송 서비스 연동이 필요 없다).
+ * - redirectTo는 앱 딥링크(reset-password 화면)로 지정한다. 메일의 링크를 누르면
+ *   Supabase 서버가 토큰을 검증한 뒤 이 딥링크로(access_token/refresh_token을
+ *   URL에 담아) 리다이렉트하고, 앱은 그 URL을 restorePasswordResetSession으로
+ *   받아 세션을 복원한다.
+ *   ⚠️ Supabase 대시보드 Authentication > URL Configuration의 Redirect URLs에
+ *   이 딥링크를 등록해둬야 실제로 동작한다.
+ * - 계정 존재 여부를 노출하지 않기 위해 이메일이 없어도 에러를 던지지 않는다
+ *   (Supabase 쪽 기본 동작).
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  if (USE_MOCK) return;
+
+  const redirectTo = Linking.createURL("reset-password");
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * 재설정 링크 파라미터에 담긴 에러를 사람이 읽을 메시지로 해석한다 (에러가 없으면 null).
+ * - 링크가 만료됐거나 이미 사용된 경우 Supabase가 access_token 대신 error/error_code/
+ *   error_description을 담아 리다이렉트한다. 순수 함수라 supabase 호출 없이 바로 테스트한다.
+ */
+export function interpretResetLinkError(params: Record<string, string>): string | null {
+  if (!params.error) return null;
+  if (params.error_code === "otp_expired") {
+    return "재설정 링크가 만료됐습니다. 다시 요청해주세요.";
+  }
+  return params.error_description ?? "재설정 링크를 사용할 수 없습니다. 다시 요청해주세요.";
+}
+
+/**
+ * 재설정 이메일 링크(딥링크)로 전달된 URL에서 세션을 복원한다.
+ * - 기본 Reset Password 템플릿의 링크를 열면 Supabase 서버가 토큰을 검증한 뒤
+ *   access_token/refresh_token을 담아 앱으로 리다이렉트한다(OAuth 로그인과 동일하게
+ *   QueryParams.getQueryParams로 쿼리+해시를 함께 파싱한다).
+ * - 이 세션이 있어야 updatePassword(비밀번호 변경)를 호출할 수 있다.
+ * - 링크가 없거나(토큰 없음) 만료·이미 사용된 경우 에러를 던진다.
+ */
+export async function restorePasswordResetSession(url: string): Promise<void> {
+  if (USE_MOCK) return;
+
+  const { params, errorCode } = QueryParams.getQueryParams(url);
+  if (errorCode) throw new Error(errorCode);
+
+  const linkError = interpretResetLinkError(params);
+  if (linkError) throw new Error(linkError);
+
+  const { access_token, refresh_token } = params;
+  if (!access_token || !refresh_token) {
+    throw new Error("재설정 링크가 올바르지 않습니다.");
+  }
+
+  const { error } = await supabase.auth.setSession({
+    access_token,
+    refresh_token,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** 새 비밀번호로 변경 (restorePasswordResetSession으로 만든 세션이 있어야 한다) */
+export async function updatePassword(newPassword: string): Promise<void> {
+  if (USE_MOCK) return;
+
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw new Error(error.message);
+}
+
+/**
  * 로그아웃
  * - scope "global"(기본): 서버에도 세션 무효화를 요청하는 일반적인 로그아웃.
  * - scope "local": 서버 요청 없이 기기에 저장된 세션만 지운다. "로그인 상태 유지"를
