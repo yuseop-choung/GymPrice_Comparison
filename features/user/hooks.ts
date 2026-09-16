@@ -148,19 +148,27 @@ interface UseResetPasswordResult {
  * - 비밀번호 변경(updatePassword)까지 성공해야 authStore에 로그인 상태를 반영한다
  *   — 링크만 열고 비밀번호를 바꾸지 않은 상태로는 앱에 로그인되지 않는다(루트
  *   레이아웃이 로그인 여부로 화면을 전환하므로, 로그인 반영 시점에 자연스럽게 홈으로 넘어간다).
+ * - url은 "아직 확인 전"(undefined) / "확인했는데 없음"(null) / "있음"(string)을
+ *   구분해서 받는다. Linking으로 앱을 연 URL은 비동기로 한 틱 뒤에 확정되는데,
+ *   이 구분이 없으면 그 사이 짧게 undefined를 null처럼 취급해 정상 링크로 들어와도
+ *   "링크가 올바르지 않다"는 에러가 잠깐 잘못 뜬다.
  */
-export function useResetPassword(url: string | null): UseResetPasswordResult {
+export function useResetPassword(
+  url: string | null | undefined
+): UseResetPasswordResult {
   const setUser = useAuthStore((state) => state.setUser);
   const [stage, setStage] = useState<ResetPasswordStage>("verifying");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!url) {
+    if (url === undefined) return; // 아직 확인 전 — verifying 상태 유지
+    if (url === null) {
       setStage("invalid");
       setError("재설정 링크가 올바르지 않습니다. 다시 요청해주세요.");
       return;
     }
+    setStage("verifying");
     restorePasswordResetSession(url)
       .then(() => setStage("ready"))
       .catch((e) => {

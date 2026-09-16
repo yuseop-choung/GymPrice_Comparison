@@ -183,6 +183,19 @@ export async function requestPasswordReset(email: string): Promise<void> {
 }
 
 /**
+ * 재설정 링크 파라미터에 담긴 에러를 사람이 읽을 메시지로 해석한다 (에러가 없으면 null).
+ * - 링크가 만료됐거나 이미 사용된 경우 Supabase가 access_token 대신 error/error_code/
+ *   error_description을 담아 리다이렉트한다. 순수 함수라 supabase 호출 없이 바로 테스트한다.
+ */
+export function interpretResetLinkError(params: Record<string, string>): string | null {
+  if (!params.error) return null;
+  if (params.error_code === "otp_expired") {
+    return "재설정 링크가 만료됐습니다. 다시 요청해주세요.";
+  }
+  return params.error_description ?? "재설정 링크를 사용할 수 없습니다. 다시 요청해주세요.";
+}
+
+/**
  * 재설정 이메일 링크(딥링크)로 전달된 URL에서 세션을 복원한다.
  * - 기본 Reset Password 템플릿의 링크를 열면 Supabase 서버가 토큰을 검증한 뒤
  *   access_token/refresh_token을 담아 앱으로 리다이렉트한다(OAuth 로그인과 동일하게
@@ -195,6 +208,9 @@ export async function restorePasswordResetSession(url: string): Promise<void> {
 
   const { params, errorCode } = QueryParams.getQueryParams(url);
   if (errorCode) throw new Error(errorCode);
+
+  const linkError = interpretResetLinkError(params);
+  if (linkError) throw new Error(linkError);
 
   const { access_token, refresh_token } = params;
   if (!access_token || !refresh_token) {

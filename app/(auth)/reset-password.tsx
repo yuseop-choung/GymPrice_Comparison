@@ -1,6 +1,6 @@
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -20,13 +20,23 @@ import { useThemeColors } from "../../hooks/useThemeColors";
  * 비밀번호 재설정 링크로 진입하는 화면 (딥링크: reset-password#access_token=...)
  * - UI 전담, 세션 복원/비밀번호 변경은 useResetPassword 훅에 위임.
  * - 검증 중 → 새 비밀번호 입력 → (성공 시) authStore 반영으로 루트가 홈으로 전환.
- * - Linking.useURL()로 앱을 연 딥링크의 전체 URL(쿼리+해시)을 그대로 훅에 넘긴다.
+ * - 앱을 연 딥링크의 전체 URL(쿼리+해시)을 훅에 넘긴다. Linking.useURL()은 첫
+ *   렌더에 항상 null을 줘서 "아직 확인 전"과 "확인했는데 없음"을 구분할 수 없으므로
+ *   (정상 링크로 들어와도 잠깐 에러가 잘못 뜨는 원인이 됨) 직접 undefined로 시작해
+ *   getInitialURL이 끝난 뒤에야 null/문자열로 확정한다.
  */
 export default function ResetPasswordScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
-  const url = Linking.useURL();
+  const [url, setUrl] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    Linking.getInitialURL().then(setUrl);
+    const subscription = Linking.addEventListener("url", (event) => setUrl(event.url));
+    return () => subscription.remove();
+  }, []);
+
   const { stage, isSaving, error, submit } = useResetPassword(url);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");

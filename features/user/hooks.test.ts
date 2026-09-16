@@ -236,11 +236,31 @@ describe("useResetPassword", () => {
     useAuthStore.setState({ user: null });
   });
 
-  it("url이 없으면 세션 복원을 시도하지 않고 invalid 상태가 된다", async () => {
+  it("url이 null이면(확인 결과 없음) 세션 복원을 시도하지 않고 invalid 상태가 된다", async () => {
     const { result } = await renderHook(() => useResetPassword(null));
 
     await waitFor(() => expect(result.current.stage).toBe("invalid"));
     expect(restorePasswordResetSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("url이 undefined면(아직 확인 전) invalid로 단정하지 않고 verifying을 유지한다", async () => {
+    const { result } = await renderHook(() => useResetPassword(undefined));
+
+    expect(result.current.stage).toBe("verifying");
+    expect(restorePasswordResetSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("undefined에서 실제 url로 바뀌면 invalid를 거치지 않고 곧바로 검증한다", async () => {
+    restorePasswordResetSessionMock.mockResolvedValue(undefined);
+    const { result, rerender } = await renderHook(
+      ({ url }: { url: string | null | undefined }) => useResetPassword(url),
+      { initialProps: { url: undefined } }
+    );
+    expect(result.current.stage).toBe("verifying");
+
+    await rerender({ url: RESET_URL });
+
+    await waitFor(() => expect(result.current.stage).toBe("ready"));
   });
 
   it("세션 복원에 성공하면 ready 상태가 된다", async () => {
