@@ -7,7 +7,8 @@ import type { GymDetail } from "../../../types";
 
 /**
  * 헬스장 부가정보 표시 카드 (UI 전담)
- * - 정보가 없으면 추가 유도, 있으면 항목 표시 + 수정 진입.
+ * - 정보가 하나도 없으면(detail === null) 참여를 유도하는 안내 문구 + 버튼을 보여준다
+ *   (가격 섹션의 빈 상태와 같은 톤). 정보가 있으면 항목 표시 + 수정 진입.
  */
 interface GymDetailInfoProps {
   detail: GymDetail | null;
@@ -18,15 +19,30 @@ export function GymDetailInfo({ detail, onEdit }: GymDetailInfoProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  if (!detail) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>부가정보</Text>
+        <Text style={styles.emptyText}>
+          아직 등록된 부가정보가 없어요. 장비 브랜드, 청결도, 트레이너 수 등을
+          처음으로 등록해보세요!
+        </Text>
+        <Pressable onPress={onEdit} style={styles.addButton} hitSlop={8}>
+          <Text style={styles.addButtonText}>부가정보 등록하기</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   const rows = [
-    { label: "장비 브랜드", value: detail?.equipment_brand ?? "-" },
+    { label: "장비 브랜드", value: detail.equipment_brand ?? "-" },
     {
       label: "청결도",
-      value: detail?.cleanliness != null ? `${detail.cleanliness}/5` : "-",
+      value: detail.cleanliness != null ? `${detail.cleanliness}/5` : "-",
     },
     {
       label: "트레이너 수",
-      value: detail?.trainer_count != null ? `${detail.trainer_count}명` : "-",
+      value: detail.trainer_count != null ? `${detail.trainer_count}명` : "-",
     },
   ];
 
@@ -37,7 +53,7 @@ export function GymDetailInfo({ detail, onEdit }: GymDetailInfoProps) {
         <Pressable onPress={onEdit} hitSlop={8}>
           {({ pressed }) => (
             <Text style={[styles.edit, pressed ? styles.editPressed : null]}>
-              {detail ? "수정" : "추가"}
+              수정
             </Text>
           )}
         </Pressable>
@@ -50,7 +66,7 @@ export function GymDetailInfo({ detail, onEdit }: GymDetailInfoProps) {
         </View>
       ))}
 
-      {detail?.memo ? <Text style={styles.memo}>{detail.memo}</Text> : null}
+      {detail.memo ? <Text style={styles.memo}>{detail.memo}</Text> : null}
     </View>
   );
 }
@@ -100,6 +116,24 @@ function createStyles(colors: ColorTheme) {
       fontSize: fontSize.sm,
       color: colors.textSecondary,
       marginTop: spacing.sm,
+    },
+    emptyText: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    addButton: {
+      alignSelf: "flex-start",
+      backgroundColor: colors.primaryMuted,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+    },
+    addButtonText: {
+      fontSize: fontSize.sm,
+      fontWeight: "600",
+      color: colors.primary,
     },
   });
 }

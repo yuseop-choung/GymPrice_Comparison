@@ -1,6 +1,13 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Button } from "../../components/ui/Button";
 import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
@@ -51,6 +58,14 @@ export default function ProfileScreen() {
           />
         )}
         contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={refetch}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={styles.nickname}>{user?.nickname ?? "게스트"}</Text>

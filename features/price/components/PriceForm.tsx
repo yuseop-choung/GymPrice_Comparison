@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { Pressable, StyleSheet, Text } from "react-native";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import type { ColorTheme } from "../../../constants/colors";
@@ -77,9 +77,13 @@ export function PriceForm({
       <Button title={submitLabel} onPress={handleSubmit} loading={isLoading} />
 
       {onDelete ? (
-        <Text style={styles.delete} onPress={onDelete}>
-          삭제하기
-        </Text>
+        <Pressable onPress={onDelete} hitSlop={8}>
+          {({ pressed }) => (
+            <Text style={[styles.delete, pressed ? styles.deletePressed : null]}>
+              삭제하기
+            </Text>
+          )}
+        </Pressable>
       ) : null}
     </>
   );
@@ -97,6 +101,9 @@ function createStyles(colors: ColorTheme) {
       color: colors.error,
       textAlign: "center",
       marginTop: spacing.lg,
+    },
+    deletePressed: {
+      opacity: 0.6,
     },
   });
 }

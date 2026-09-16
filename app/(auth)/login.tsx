@@ -6,6 +6,7 @@ import { Checkbox } from "../../components/ui/Checkbox";
 import { Input } from "../../components/ui/Input";
 import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
+import { AuthModeToggle } from "../../features/user/components/AuthModeToggle";
 import { SnsLoginButtons } from "../../features/user/components/SnsLoginButtons";
 import { useAuth } from "../../features/user/hooks";
 import { useThemeColors } from "../../hooks/useThemeColors";
@@ -82,9 +83,7 @@ export default function LoginScreen() {
           loading={isLoading}
         />
 
-        <Text style={styles.toggle} onPress={() => setIsSignUp((v) => !v)}>
-          {isSignUp ? "이미 계정이 있나요? 로그인" : "계정이 없나요? 회원가입"}
-        </Text>
+        <AuthModeToggle isSignUp={isSignUp} onToggle={() => setIsSignUp((v) => !v)} />
 
         <Text style={styles.divider}>또는 SNS로 계속하기</Text>
 
@@ -129,12 +128,6 @@ function createStyles(colors: ColorTheme) {
       fontSize: fontSize.sm,
       color: colors.error,
       marginBottom: spacing.md,
-    },
-    toggle: {
-      fontSize: fontSize.sm,
-      color: colors.primary,
-      textAlign: "center",
-      marginVertical: spacing.lg,
     },
     divider: {
       fontSize: fontSize.sm,
