@@ -13,15 +13,18 @@ import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
 import { useNotifications } from "../../features/notifications/hooks";
 import { useMyPrices } from "../../features/price/hooks";
-import { InterestRegionSummaryRow } from "../../features/user/components/InterestRegionSummaryRow";
 import { MyPriceCard } from "../../features/user/components/MyPriceCard";
-import { ThemeModeSwitch } from "../../features/user/components/ThemeModeSwitch";
-import { MAX_INTEREST_REGIONS, useInterestRegions } from "../../features/user/hooks";
+import { ProfileHeader } from "../../features/user/components/ProfileHeader";
+import { useInterestRegions } from "../../features/user/hooks";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { useAuthStore } from "../../store/authStore";
 import { useThemeStore } from "../../store/themeStore";
 
-/** 내 정보 탭 — 유저 정보 + 내가 등록한 가격 목록(수정/삭제) + 로그아웃 */
+/**
+ * 내 정보 탭 — 유저 정보 + 내가 등록한 가격 목록(수정/삭제) + 로그아웃
+ * - 비로그인 상태(둘러보기 중)면 보여줄 내 정보가 없으므로 로그인 버튼만 보여준다.
+ * - 상단 영역(닉네임/관심지역/테마/버튼)은 ProfileHeader에 위임한다.
+ */
 export default function ProfileScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -40,6 +43,15 @@ export default function ProfileScreen() {
       refetch();
     }, [refetch])
   );
+
+  // 비로그인 상태(둘러보기 중)면 내 정보를 보여줄 게 없으므로 로그인 버튼만 보여준다.
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.guest]}>
+        <Button title="로그인하기" onPress={() => router.push("/login")} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -67,25 +79,16 @@ export default function ProfileScreen() {
           />
         }
         ListHeaderComponent={
-          <View style={styles.header}>
-            <Text style={styles.nickname}>{user?.nickname ?? "게스트"}</Text>
-            <Text style={styles.email}>{user?.email ?? ""}</Text>
-            <InterestRegionSummaryRow
-              regions={regions}
-              maxCount={MAX_INTEREST_REGIONS}
-              onPress={() => router.push("/interest-region")}
-            />
-            <ThemeModeSwitch mode={themeMode} onChange={setThemeMode} />
-            <View style={styles.action}>
-              <Button title="테스트 알림 보내기" onPress={sendTest} />
-            </View>
-            <View style={styles.action}>
-              <Button title="로그아웃" onPress={signOut} />
-            </View>
-            <Text style={styles.sectionTitle}>
-              내가 등록한 가격 ({prices.length})
-            </Text>
-          </View>
+          <ProfileHeader
+            user={user}
+            regions={regions}
+            themeMode={themeMode}
+            onThemeChange={setThemeMode}
+            onInterestRegionPress={() => router.push("/interest-region")}
+            onSendTest={sendTest}
+            onSignOut={signOut}
+            priceCount={prices.length}
+          />
         }
         ListEmptyComponent={
           isLoading ? (
@@ -108,27 +111,10 @@ function createStyles(colors: ColorTheme) {
     content: {
       padding: spacing.lg,
     },
-    header: {
-      marginBottom: spacing.md,
-    },
-    nickname: {
-      fontSize: fontSize.xl,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    email: {
-      fontSize: fontSize.md,
-      color: colors.textSecondary,
-      marginTop: spacing.xs,
-    },
-    action: {
-      marginTop: spacing.md,
-    },
-    sectionTitle: {
-      fontSize: fontSize.lg,
-      fontWeight: "600",
-      color: colors.text,
-      marginTop: spacing.xl,
+    guest: {
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing.xl,
     },
     message: {
       fontSize: fontSize.md,
