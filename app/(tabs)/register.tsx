@@ -24,6 +24,9 @@ export default function RegisterScreen() {
   const [gymQuery, setGymQuery] = useState("");
   // 가격 등록에서 검색했지만 못 찾은 헬스장 이름 — "헬스장 등록"으로 넘어갈 때 미리 채워준다.
   const [newGymName, setNewGymName] = useState("");
+  // "새 헬스장으로 등록하기"를 눌렀을 때만 올려서 GymRegisterForm을 의도적으로
+  // 새로 시작한다(그 외 탭 전환에서는 값이 안 바뀌어 입력 중이던 내용이 유지된다).
+  const [registerFormKey, setRegisterFormKey] = useState(0);
   const { results, isSearching, hasSearched, error: searchError, search, reset } =
     useSearchGyms();
 
@@ -37,6 +40,7 @@ export default function RegisterScreen() {
     setNewGymName(gymQuery.trim());
     reset();
     setGymQuery("");
+    setRegisterFormKey((k) => k + 1);
     setMode("gym");
   }
 
@@ -58,28 +62,28 @@ export default function RegisterScreen() {
         ))}
       </View>
 
-      {mode === "price" ? (
-        <>
-          <Text style={styles.title}>가격 등록</Text>
-          <Text style={styles.hint}>이미 등록된 헬스장을 검색해 가격을 등록하세요.</Text>
-          <PriceOnlyGymPicker
-            query={gymQuery}
-            onQueryChange={setGymQuery}
-            onSubmit={() => search(gymQuery)}
-            isSearching={isSearching}
-            hasSearched={hasSearched}
-            error={searchError}
-            results={results}
-            onSelect={handleSelectGym}
-            onRegisterNew={handleRegisterNew}
-          />
-        </>
-      ) : (
-        <>
-          <Text style={styles.title}>헬스장 등록</Text>
-          <GymRegisterForm initialName={newGymName} />
-        </>
-      )}
+      {/* 탭 전환은 조건부 렌더링이 아니라 숨김 처리로 한다 — 둘 다 항상 마운트된 상태를
+          유지해야 다른 탭으로 갔다 와도 입력 중이던 내용이 사라지지 않는다. */}
+      <View style={mode === "price" ? undefined : styles.hidden}>
+        <Text style={styles.title}>가격 등록</Text>
+        <Text style={styles.hint}>이미 등록된 헬스장을 검색해 가격을 등록하세요.</Text>
+        <PriceOnlyGymPicker
+          query={gymQuery}
+          onQueryChange={setGymQuery}
+          onSubmit={() => search(gymQuery)}
+          isSearching={isSearching}
+          hasSearched={hasSearched}
+          error={searchError}
+          results={results}
+          onSelect={handleSelectGym}
+          onRegisterNew={handleRegisterNew}
+        />
+      </View>
+
+      <View style={mode === "gym" ? undefined : styles.hidden}>
+        <Text style={styles.title}>헬스장 등록</Text>
+        <GymRegisterForm key={registerFormKey} initialName={newGymName} />
+      </View>
     </ScrollView>
   );
 }
@@ -129,6 +133,9 @@ function createStyles(colors: ColorTheme) {
       fontSize: fontSize.sm,
       color: colors.textSecondary,
       marginBottom: spacing.lg,
+    },
+    hidden: {
+      display: "none",
     },
   });
 }

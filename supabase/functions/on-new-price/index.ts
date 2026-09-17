@@ -53,6 +53,8 @@ interface PushMessage {
   title: string;
   body: string;
   sound: "default";
+  // 알림을 탭했을 때 클라이언트가 해당 헬스장 상세로 바로 이동할 수 있도록 담아 보낸다.
+  data: { gym_id: string };
 }
 
 // 알림 대상 반경 (km)
@@ -177,7 +179,8 @@ async function buildMessages(
   supabase: SupabaseClient,
   userIds: string[],
   title: string,
-  body: string
+  body: string,
+  gymId: string
 ): Promise<PushMessage[]> {
   if (userIds.length === 0) return [];
   const { data: tokenRows } = await supabase
@@ -193,6 +196,7 @@ async function buildMessages(
       title,
       body,
       sound: "default" as const,
+      data: { gym_id: gymId },
     }));
 }
 
@@ -232,13 +236,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
         supabase,
         nearbyUserIds,
         "내 동네 새 가격",
-        `${gym.name}에 새로운 가격이 등록됐어요!`
+        `${gym.name}에 새로운 가격이 등록됐어요!`,
+        record.gym_id
       ),
       buildMessages(
         supabase,
         interestUserIds,
         "관심 지역 최저가",
-        `${gym.name} ${record.label} 최저가가 ${record.price.toLocaleString()}원으로 갱신됐어요!`
+        `${gym.name} ${record.label} 최저가가 ${record.price.toLocaleString()}원으로 갱신됐어요!`,
+        record.gym_id
       ),
     ]);
 

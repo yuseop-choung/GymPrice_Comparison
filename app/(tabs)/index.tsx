@@ -1,4 +1,3 @@
-import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   FlatList,
@@ -14,7 +13,7 @@ import { fontSize, radius, spacing } from "../../constants/layout";
 import { GymCard } from "../../features/gym/components/GymCard";
 import { KakaoMap } from "../../features/gym/components/KakaoMap";
 import type { MapBounds } from "../../features/gym/components/kakaoMapHtml";
-import { useNearbyGyms } from "../../features/gym/hooks";
+import { useGymDetailGate, useNearbyGyms } from "../../features/gym/hooks";
 import { isWithinBounds } from "../../features/gym/utils";
 import { formatPrice } from "../../features/price/utils";
 import { useSyncUserLocation } from "../../features/user/hooks";
@@ -29,7 +28,7 @@ import { useThemeColors } from "../../hooks/useThemeColors";
 export default function HomeScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const router = useRouter();
+  const { openGymDetail } = useGymDetailGate();
   const { coords, isLoading: isLocating } = useLocation();
   const { gyms, isLoading, error, refetch } = useNearbyGyms(
     coords.lat,
@@ -71,7 +70,7 @@ export default function HomeScreen() {
         <KakaoMap
           center={coords}
           markers={markers}
-          onMarkerPress={(id) => router.push(`/gym/${id}`)}
+          onMarkerPress={openGymDetail}
           onBoundsChange={setMapBounds}
         />
       </View>
@@ -87,7 +86,7 @@ export default function HomeScreen() {
           data={visibleGyms}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <GymCard gym={item} onPress={() => router.push(`/gym/${item.id}`)} />
+            <GymCard gym={item} onPress={() => openGymDetail(item.id)} />
           )}
           contentContainerStyle={styles.listContent}
           refreshControl={

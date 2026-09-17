@@ -5,7 +5,10 @@ import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { HeaderBackButton } from "../components/ui/HeaderBackButton";
 import { useTrackAppOpen } from "../features/analytics/hooks";
-import { usePushRegistration } from "../features/notifications/hooks";
+import {
+  useNotificationNavigation,
+  usePushRegistration,
+} from "../features/notifications/hooks";
 import { useIsDarkMode, useThemeColors } from "../hooks/useThemeColors";
 import { useAuthStore } from "../store/authStore";
 import { useOnboardingStore } from "../store/onboardingStore";
@@ -20,7 +23,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 /**
  * 루트 레이아웃 (Expo Router)
  * - 앱 시작 시 온보딩 여부·인증 세션·테마 설정을 복구하고 화면을 분기한다.
- * - 온보딩 미완료 → 온보딩, 비로그인 → 로그인, 로그인 → 탭.
+ * - 온보딩 미완료 → 온보딩, 온보딩 완료 → 탭(로그인 여부와 무관하게 둘러볼 수 있음).
+ * - 가격 등록/수정, 헬스장 등록/부가정보 수정, 관심 지역 설정, 헬스장 상세처럼
+ *   로그인이 실제로 필요한 화면(탭 바깥의 화면들)만 비로그인 시 로그인으로 보낸다.
+ *   헬스장 상세는 로그인 유도(Alert)를 먼저 보여준 뒤에만 이 경로로 오므로,
+ *   여기 도달했다는 것 자체가 곧장 로그인으로 보내도 되는 경우다.
  */
 export default function RootLayout() {
   const user = useAuthStore((state) => state.user);
@@ -36,6 +43,7 @@ export default function RootLayout() {
   const router = useRouter();
 
   usePushRegistration(); // 로그인 시 푸시 토큰 등록
+  useNotificationNavigation(); // 알림을 탭하면 해당 헬스장 상세로 이동
   useTrackAppOpen(user?.uid); // 관리자 대시보드 "오늘 접속" 지표용
 
   useEffect(() => {
@@ -51,16 +59,20 @@ export default function RootLayout() {
     });
     const seg0 = segments[0];
     const inAuthGroup = seg0 === "(auth)";
+    // 탭(홈/리스트/등록/내 정보)은 로그인 없이도 둘러볼 수 있다. 가격 등록/수정,
+    // 헬스장 등록 폼 자체는 그 안에서(훅에서) 별도로 로그인 여부를 확인한다.
+    const inTabsGroup = seg0 === "(tabs)";
 
     if (!hasSeen) {
       // 온보딩 미완료 → 온보딩으로
       if (seg0 !== "onboarding") router.replace("/onboarding");
       return;
     }
-    // 온보딩 완료: 온보딩 화면에 있으면 적절히 내보낸다.
+    // 온보딩 완료: 온보딩 화면에 있으면 로그인 여부와 무관하게 탭으로 보낸다
+    // (게스트도 둘러볼 수 있으므로 굳이 로그인부터 강제하지 않는다).
     if (seg0 === "onboarding") {
-      router.replace(user ? "/" : "/login");
-    } else if (!user && !inAuthGroup) {
+      router.replace("/");
+    } else if (!user && !inAuthGroup && !inTabsGroup) {
       router.replace("/login");
     } else if (user && inAuthGroup) {
       router.replace("/");

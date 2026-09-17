@@ -1,4 +1,3 @@
-import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { StateView } from "../../components/ui/StateView";
@@ -7,7 +6,7 @@ import { SEARCH_RADIUS_KM } from "../../constants/config";
 import { spacing } from "../../constants/layout";
 import { GymCard } from "../../features/gym/components/GymCard";
 import { GymListFilters, type SortKey } from "../../features/gym/components/GymListFilters";
-import { useNearbyGyms } from "../../features/gym/hooks";
+import { useGymDetailGate, useNearbyGyms } from "../../features/gym/hooks";
 import { distanceKm } from "../../features/gym/utils";
 import { useLocation } from "../../hooks/useLocation";
 import { useThemeColors } from "../../hooks/useThemeColors";
@@ -16,7 +15,7 @@ import { useThemeColors } from "../../hooks/useThemeColors";
 export default function ListScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const router = useRouter();
+  const { openGymDetail } = useGymDetailGate();
   const [keyword, setKeyword] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("distance");
   const { coords, isLoading: isLocating } = useLocation();
@@ -66,7 +65,7 @@ export default function ListScreen() {
           data={visibleGyms}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <GymCard gym={item} onPress={() => router.push(`/gym/${item.id}`)} />
+            <GymCard gym={item} onPress={() => openGymDetail(item.id)} />
           )}
           contentContainerStyle={styles.listContent}
           refreshControl={
