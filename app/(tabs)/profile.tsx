@@ -8,12 +8,12 @@ import {
   Text,
   View,
 } from "react-native";
-import { Button } from "../../components/ui/Button";
 import type { ColorTheme } from "../../constants/colors";
 import { fontSize, spacing } from "../../constants/layout";
 import { useNotifications } from "../../features/notifications/hooks";
 import { useMyPrices } from "../../features/price/hooks";
 import { MyPriceCard } from "../../features/user/components/MyPriceCard";
+import { ProfileGuestView } from "../../features/user/components/ProfileGuestView";
 import { ProfileHeader } from "../../features/user/components/ProfileHeader";
 import { useInterestRegions } from "../../features/user/hooks";
 import { useThemeColors } from "../../hooks/useThemeColors";
@@ -22,8 +22,9 @@ import { useThemeStore } from "../../store/themeStore";
 
 /**
  * 내 정보 탭 — 유저 정보 + 내가 등록한 가격 목록(수정/삭제) + 로그아웃
- * - 비로그인 상태(둘러보기 중)면 보여줄 내 정보가 없으므로 로그인 버튼만 보여준다.
- * - 상단 영역(닉네임/관심지역/테마/버튼)은 ProfileHeader에 위임한다.
+ * - 비로그인 상태(둘러보기 중)면 보여줄 내 정보가 없으므로 ProfileGuestView로
+ *   로그인을 유도한다.
+ * - 로그인 상태의 상단 영역(닉네임/관심지역/테마/버튼)은 ProfileHeader에 위임한다.
  */
 export default function ProfileScreen() {
   const colors = useThemeColors();
@@ -44,13 +45,9 @@ export default function ProfileScreen() {
     }, [refetch])
   );
 
-  // 비로그인 상태(둘러보기 중)면 내 정보를 보여줄 게 없으므로 로그인 버튼만 보여준다.
+  // 비로그인 상태(둘러보기 중)면 내 정보를 보여줄 게 없으므로 로그인을 유도한다.
   if (!user) {
-    return (
-      <View style={[styles.container, styles.guest]}>
-        <Button title="로그인하기" onPress={() => router.push("/login")} />
-      </View>
-    );
+    return <ProfileGuestView onLoginPress={() => router.push("/login")} />;
   }
 
   return (
@@ -110,11 +107,6 @@ function createStyles(colors: ColorTheme) {
     },
     content: {
       padding: spacing.lg,
-    },
-    guest: {
-      alignItems: "center",
-      justifyContent: "center",
-      padding: spacing.xl,
     },
     message: {
       fontSize: fontSize.md,
