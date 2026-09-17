@@ -18,6 +18,9 @@
   approved로 새로 바뀌는 경우)에만 반응하도록 설계돼 있다. 아래 "트리거 연결"의
   Events 설정을 **반드시 UPDATE로** 맞춰야 한다.
 
+  각 알림에는 `data: { gym_id }`가 담겨 있어, 앱에서 알림을 탭하면
+  (`useNotificationNavigation`) 해당 헬스장 상세 화면으로 바로 이동한다.
+
 ## 배포
 
 ```bash

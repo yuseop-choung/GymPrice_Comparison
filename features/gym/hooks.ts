@@ -1,4 +1,6 @@
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
+import { Alert } from "react-native";
 import { toFriendlyErrorMessage } from "../../lib/api/errors";
 import { useAuthStore } from "../../store/authStore";
 import type {
@@ -20,6 +22,46 @@ import {
 /** 정지된 계정에게 보여줄 안내 메시지 (등록/수정 시도 전에 미리 막을 때 공용으로 쓴다) */
 const SUSPENDED_MESSAGE =
   "정지된 계정은 이 기능을 사용할 수 없습니다. 문의가 필요하면 관리자에게 연락해주세요.";
+
+/** 로그인하지 않은 유저에게 보여줄 안내 메시지 */
+const LOGIN_REQUIRED_MESSAGE = "로그인이 필요합니다.";
+
+interface UseGymDetailGateResult {
+  /**
+   * 헬스장 상세로 이동을 시도한다. 로그인 상태면 곧바로 이동하고, 비로그인
+   * 상태면 상세 화면 대신 로그인을 유도하는 안내를 보여준다(그 자리에서 둘러보던
+   * 흐름이 끊기지 않도록 즉시 로그인 화면으로 보내지 않고 먼저 물어본다).
+   */
+  openGymDetail: (gymId: string) => void;
+}
+
+/**
+ * 헬스장 상세 진입 게이트 훅 (비즈니스 로직 전담)
+ * - 홈/리스트 화면 어디서든 헬스장 카드를 누르는 동작에 공용으로 쓴다.
+ * - 상세 화면(가격 상세 열람 등)은 로그인 유저를 전제로 하는 기능이 많아,
+ *   진입 시점에 로그인을 유도한다. 목록/지도 자체는 비로그인 상태에서도 볼 수 있다.
+ */
+export function useGymDetailGate(): UseGymDetailGateResult {
+  const user = useAuthStore((state) => state.user);
+  const router = useRouter();
+
+  function openGymDetail(gymId: string): void {
+    if (user) {
+      router.push(`/gym/${gymId}`);
+      return;
+    }
+    Alert.alert(
+      "로그인이 필요해요",
+      "헬스장 상세 정보는 로그인 후 확인할 수 있어요.",
+      [
+        { text: "취소", style: "cancel" },
+        { text: "로그인하기", onPress: () => router.push("/login") },
+      ]
+    );
+  }
+
+  return { openGymDetail };
+}
 
 /** 헬스장 상세 데이터 (기본 정보 + 가격 목록 + 부가정보) */
 interface GymDetailData {
@@ -200,9 +242,16 @@ export function useRegisterGym({
       setError("위치(위도/경도)가 올바르지 않습니다.");
       return;
     }
+    // 등록 탭은 비로그인 상태에서도 열람할 수 있어(둘러보기 허용), 제출 시점에
+    // 로그인 여부를 확인한다. 서버(RLS)도 막지만, 폼을 다 채운 뒤에야 실패
+    // 문구를 보는 것보다 이해하기 쉬운 안내를 먼저 보여준다.
+    if (!user) {
+      setError(LOGIN_REQUIRED_MESSAGE);
+      return;
+    }
     // 서버(RLS)도 정지 계정의 등록을 막지만, 여기서 미리 걸러 기술적인 에러
     // 문구 대신 이해할 수 있는 안내를 바로 보여준다.
-    if (user?.is_suspended) {
+    if (user.is_suspended) {
       setError(SUSPENDED_MESSAGE);
       return;
     }

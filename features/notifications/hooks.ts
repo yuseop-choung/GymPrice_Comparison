@@ -1,6 +1,9 @@
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
+  addNotificationTapListener,
   getExpoPushToken,
+  getLastNotificationTapData,
   requestNotificationPermission,
   savePushToken,
   sendLocalNotification,
@@ -71,4 +74,23 @@ export function usePushRegistration(): void {
       mounted = false;
     };
   }, [user]);
+}
+
+/**
+ * 알림을 탭해서 앱에 들어왔을 때 해당 헬스장 상세로 이동하는 훅
+ * - 앱이 켜진 채로 탭한 경우(addNotificationTapListener)와, 완전히 종료된
+ *   상태에서 탭해 실행된 경우(getLastNotificationTapData) 둘 다 처리한다.
+ */
+export function useNotificationNavigation(): void {
+  const router = useRouter();
+
+  useEffect(() => {
+    getLastNotificationTapData().then((data) => {
+      if (data?.gym_id) router.push(`/gym/${data.gym_id}`);
+    });
+
+    return addNotificationTapListener((data) => {
+      if (data.gym_id) router.push(`/gym/${data.gym_id}`);
+    });
+  }, [router]);
 }

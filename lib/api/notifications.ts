@@ -75,3 +75,38 @@ export async function savePushToken(
     .upsert({ user_id: userId, token }, { onConflict: "token" });
   if (error) throw new Error(error.message);
 }
+
+/** 알림에 담겨 오는 데이터 (서버가 gym_id를 담아 보낸다 — on-new-price 참고) */
+export interface NotificationTapData {
+  gym_id?: string;
+}
+
+/** 알림 탭 페이로드에서 필요한 값만 안전하게 꺼낸다 (형식이 다르면 빈 값) */
+function readTapData(data: unknown): NotificationTapData {
+  if (typeof data !== "object" || data === null) return {};
+  const gymId = (data as Record<string, unknown>).gym_id;
+  return { gym_id: typeof gymId === "string" ? gymId : undefined };
+}
+
+/**
+ * 알림을 탭했을 때(앱이 켜져 있거나 백그라운드) 호출되는 리스너를 등록한다.
+ * - 반환값을 호출하면 구독을 해제한다.
+ */
+export function addNotificationTapListener(
+  onTap: (data: NotificationTapData) => void
+): () => void {
+  const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+    onTap(readTapData(response.notification.request.content.data));
+  });
+  return () => subscription.remove();
+}
+
+/**
+ * 앱이 완전히 종료된 상태에서 알림을 탭해 실행된 경우, 그 알림의 데이터를 가져온다.
+ * - 알림을 탭해서 실행된 게 아니면 null.
+ */
+export async function getLastNotificationTapData(): Promise<NotificationTapData | null> {
+  const response = await Notifications.getLastNotificationResponseAsync();
+  if (!response) return null;
+  return readTapData(response.notification.request.content.data);
+}

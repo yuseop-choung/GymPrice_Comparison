@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
+import { Alert } from "react-native";
 import { useAuthStore } from "../../store/authStore";
 import type { Gym, GymDetail, GymWithPrice, User } from "../../types";
 import {
@@ -10,6 +11,7 @@ import {
 } from "./api";
 import {
   useEditGymDetail,
+  useGymDetailGate,
   useNearbyGyms,
   useRegisterGym,
   useSearchGyms,
@@ -23,6 +25,11 @@ jest.mock("./api", () => ({
   getGymWithPrices: jest.fn(),
   registerGym: jest.fn(),
   searchGyms: jest.fn(),
+}));
+
+const mockPush = jest.fn();
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ push: mockPush }),
 }));
 
 // useAuthStore가 내부적으로 로드하는 lib/api/auth → lib/supabase가 테스트 환경(.env
@@ -53,6 +60,15 @@ const SUSPENDED_USER: User = {
   nickname: "정지유저",
   is_admin: false,
   is_suspended: true,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+const NORMAL_USER: User = {
+  uid: "u2",
+  email: "normal@example.com",
+  nickname: "일반유저",
+  is_admin: false,
+  is_suspended: false,
   created_at: "2026-01-01T00:00:00Z",
 };
 
@@ -138,6 +154,7 @@ describe("useRegisterGym", () => {
   });
 
   it("이름과 위경도가 유효하면 등록하고 onSuccess를 부른다", async () => {
+    useAuthStore.setState({ user: NORMAL_USER });
     const created: Gym = {
       id: "g1",
       name: "강철짐",
@@ -165,6 +182,23 @@ describe("useRegisterGym", () => {
     expect(registerGymMock).toHaveBeenCalled();
     expect(onSuccess).toHaveBeenCalledWith(created);
     expect(result.current.error).toBeNull();
+  });
+
+  it("로그인하지 않았으면 입력이 유효해도 등록을 시도하지 않는다", async () => {
+    const { result } = await renderHook(() => useRegisterGym());
+
+    await act(async () => {
+      await result.current.submit({
+        name: "강철짐",
+        address: null,
+        lat: 37.5,
+        lng: 127.0,
+        phone: null,
+      });
+    });
+
+    expect(registerGymMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("로그인이 필요합니다.");
   });
 
   it("정지된 계정이면 입력이 유효해도 등록을 시도하지 않는다", async () => {
@@ -253,6 +287,54 @@ describe("useSearchGyms", () => {
     expect(result.current.results).toEqual([]);
     expect(result.current.error).toBeNull();
     expect(result.current.hasSearched).toBe(false);
+  });
+});
+
+describe("useGymDetailGate", () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+    jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("로그인 상태면 곧바로 헬스장 상세로 이동한다", async () => {
+    useAuthStore.setState({ user: NORMAL_USER });
+    const { result } = await renderHook(() => useGymDetailGate());
+
+    result.current.openGymDetail("g1");
+
+    expect(mockPush).toHaveBeenCalledWith("/gym/g1");
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it("비로그인 상태면 이동하지 않고 로그인을 유도하는 안내를 보여준다", async () => {
+    useAuthStore.setState({ user: null });
+    const { result } = await renderHook(() => useGymDetailGate());
+
+    result.current.openGymDetail("g1");
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "로그인이 필요해요",
+      expect.any(String),
+      expect.any(Array)
+    );
+  });
+
+  it("안내에서 '로그인하기'를 누르면 로그인 화면으로 이동한다", async () => {
+    useAuthStore.setState({ user: null });
+    const { result } = await renderHook(() => useGymDetailGate());
+
+    result.current.openGymDetail("g1");
+
+    const alertMock = Alert.alert as jest.Mock;
+    const buttons = alertMock.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+    buttons.find((b) => b.text === "로그인하기")?.onPress?.();
+
+    expect(mockPush).toHaveBeenCalledWith("/login");
   });
 });
 
