@@ -59,8 +59,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       const user = await getCurrentUser();
       set({ user, isInitialized: true });
-    } catch {
-      // 세션 복구 실패 시에도 앱은 진입 가능하도록 비로그인 처리
+    } catch (e) {
+      // 세션 복구 실패 시에도 앱은 진입 가능하도록 비로그인 처리.
+      // ⚠️ 원인 파악이 안 되는 걸 막기 위해 콘솔에는 실제 에러를 남긴다.
+      console.error("[auth] 세션 복구 실패:", e);
       set({ user: null, isInitialized: true });
     }
   },
