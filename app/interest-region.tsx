@@ -52,6 +52,9 @@ export default function InterestRegionScreen() {
           <RegionList
             items={currentGroup.sigungu}
             selected={null}
+            disabledItems={regions
+              .filter((r) => r.sido === pendingSido)
+              .map((r) => r.sigungu)}
             onSelect={handleSelectSigungu}
           />
         </>
