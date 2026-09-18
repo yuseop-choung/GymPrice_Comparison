@@ -4,6 +4,23 @@ import type { MapBounds } from "./components/kakaoMapHtml";
  * 헬스장 관련 유틸
  */
 
+/**
+ * 위경도 값이 지구상 실제 좌표로 유효한 범위인지 (위도 -90~90, 경도 -180~180).
+ * - 헬스장 등록 시 오입력/카카오 검색 API 오류 등으로 범위 밖 값이 들어오면
+ *   지도/거리 계산이 깨지므로 등록 전에 막는다. DB(gyms 테이블)에도 동일한
+ *   범위의 CHECK 제약이 있어(supabase/schema.sql), 클라이언트를 우회해도 최종적으로 막힌다.
+ */
+export function isValidCoordinate(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
+
 /** 좌표가 지도에 현재 보이는 영역(뷰포트) 안에 있는지 — 홈 화면의 "지도 안 헬스장만 목록에" 필터링용 */
 export function isWithinBounds(
   coords: { lat: number; lng: number },

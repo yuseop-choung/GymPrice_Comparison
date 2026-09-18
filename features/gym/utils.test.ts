@@ -1,4 +1,4 @@
-import { distanceKm, formatDistance, isWithinBounds } from "./utils";
+import { distanceKm, formatDistance, isValidCoordinate, isWithinBounds } from "./utils";
 
 describe("distanceKm", () => {
   it("같은 좌표는 0", () => {
@@ -43,5 +43,25 @@ describe("isWithinBounds", () => {
   it("영역 바깥 좌표는 false", () => {
     expect(isWithinBounds({ lat: 36.9, lng: 127.25 }, bounds)).toBe(false);
     expect(isWithinBounds({ lat: 37.25, lng: 127.6 }, bounds)).toBe(false);
+  });
+});
+
+describe("isValidCoordinate", () => {
+  it("정상 범위의 위경도는 true", () => {
+    expect(isValidCoordinate(37.5, 127.0)).toBe(true);
+    expect(isValidCoordinate(-90, -180)).toBe(true); // 경계값(포함)
+    expect(isValidCoordinate(90, 180)).toBe(true); // 경계값(포함)
+  });
+
+  it("위도/경도 범위를 벗어나면 false", () => {
+    expect(isValidCoordinate(999, 127.0)).toBe(false);
+    expect(isValidCoordinate(37.5, -500)).toBe(false);
+    expect(isValidCoordinate(-91, 0)).toBe(false);
+    expect(isValidCoordinate(0, 181)).toBe(false);
+  });
+
+  it("NaN/Infinity는 false", () => {
+    expect(isValidCoordinate(NaN, 127.0)).toBe(false);
+    expect(isValidCoordinate(37.5, Infinity)).toBe(false);
   });
 });

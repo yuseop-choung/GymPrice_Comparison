@@ -46,6 +46,59 @@ create table if not exists public.gyms (
 -- 찾아 등록하면 자동으로 채워지지만, 직접 입력 시에는 비워둘 수 있다.
 alter table public.gyms alter column address drop not null;
 
+-- 위경도 유효 범위 + 자유 입력 텍스트 길이 제한. 클라이언트(useRegisterGym의
+-- isValidCoordinate)도 동일하게 검증하지만, API를 직접 호출해도 막히도록 DB에서도
+-- 강제한다 — 범위 밖 좌표가 들어오면 지도 렌더링/거리 계산(Haversine)이 깨진다.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gyms_lat_range'
+  ) then
+    alter table public.gyms
+      add constraint gyms_lat_range check (lat between -90 and 90);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gyms_lng_range'
+  ) then
+    alter table public.gyms
+      add constraint gyms_lng_range check (lng between -180 and 180);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gyms_name_length'
+  ) then
+    alter table public.gyms
+      add constraint gyms_name_length check (char_length(name) between 1 and 100);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gyms_address_length'
+  ) then
+    alter table public.gyms
+      add constraint gyms_address_length check (address is null or char_length(address) <= 200);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gyms_phone_length'
+  ) then
+    alter table public.gyms
+      add constraint gyms_phone_length check (phone is null or char_length(phone) <= 20);
+  end if;
+end $$;
+
 -- ⚠️ gym_prices를 "기간별 고정 컬럼(price_1m/3m/6m/12m)" 구조에서
 -- "라벨(자유 텍스트) + 가격 1건 = 1행" 구조로 전면 교체한다. PT 횟수권처럼
 -- 기간권이 아닌 가격도 자유롭게 등록할 수 있게 하기 위함. 예전 구조의 데이터는
@@ -91,6 +144,28 @@ begin
   ) then
     alter table public.gym_prices
       add constraint gym_prices_status_check check (status in ('pending', 'approved', 'rejected'));
+  end if;
+end $$;
+
+-- 라벨/메모 길이 제한 (features/price/utils.ts에는 별도 상한이 없어 여기 DB가
+-- 유일한 방어선 — 지나치게 긴 값으로 목록 UI가 깨지거나 스팸성 도배를 막는다).
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_prices_label_length'
+  ) then
+    alter table public.gym_prices
+      add constraint gym_prices_label_length check (char_length(label) between 1 and 50);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_prices_memo_length'
+  ) then
+    alter table public.gym_prices
+      add constraint gym_prices_memo_length check (memo is null or char_length(memo) <= 500);
   end if;
 end $$;
 
@@ -143,6 +218,27 @@ begin
   ) then
     alter table public.gym_details
       add constraint gym_details_trainer_count_range check (trainer_count is null or trainer_count >= 0);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_details_equipment_brand_length'
+  ) then
+    alter table public.gym_details
+      add constraint gym_details_equipment_brand_length
+        check (equipment_brand is null or char_length(equipment_brand) <= 100);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gym_details_memo_length'
+  ) then
+    alter table public.gym_details
+      add constraint gym_details_memo_length check (memo is null or char_length(memo) <= 500);
   end if;
 end $$;
 
@@ -492,6 +588,38 @@ drop trigger if exists on_gym_price_update on public.gym_prices;
 create trigger on_gym_price_update
   before update on public.gym_prices
   for each row execute function public.enforce_gym_price_update_rules();
+
+-- 실수로 여러 번 탭하거나 스팸성으로 짧은 시간 안에 같은 내용(헬스장/라벨/가격 동일)을
+-- 반복 제출하는 것을 막는다. ⚠️ "완전히 동일한 값 자체"를 영구히 막지는 않는다 —
+-- 몇 주/몇 달 뒤 같은 가격이 여전히 유효함을 재확인해 다시 제보하는 것까지 막으면
+-- 가격 freshness(최신성 확인) 자체를 방해하게 되므로, 아주 짧은 쿨다운 시간 안의
+-- 반복만 차단한다. 정상적인 가격 변경 이력(다른 값으로 재제출)은 애초에 값이
+-- 달라 이 검사에 걸리지 않는다.
+create or replace function public.prevent_duplicate_price_submission()
+returns trigger
+language plpgsql
+as $$
+declare
+  duplicate_cooldown constant interval := interval '10 minutes';
+begin
+  if exists (
+    select 1 from public.gym_prices
+    where user_id = new.user_id
+      and gym_id = new.gym_id
+      and label = new.label
+      and price = new.price
+      and created_at > now() - duplicate_cooldown
+  ) then
+    raise exception '이미 같은 내용으로 방금 제보했어요. 잠시 후 다시 시도해주세요.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_gym_price_duplicate_check on public.gym_prices;
+create trigger on_gym_price_duplicate_check
+  before insert on public.gym_prices
+  for each row execute function public.prevent_duplicate_price_submission();
 
 -- gym_details (한 헬스장당 1건 — 로그인 + 정지되지 않은 유저는 누구나 추가/수정 가능한
 -- 크라우드소싱 정보)

@@ -153,6 +153,26 @@ describe("useRegisterGym", () => {
     useAuthStore.setState({ user: null });
   });
 
+  it("위경도가 유효 범위(위도 -90~90, 경도 -180~180)를 벗어나면 등록하지 않는다", async () => {
+    useAuthStore.setState({ user: NORMAL_USER });
+    const onSuccess = jest.fn();
+    const { result } = await renderHook(() => useRegisterGym({ onSuccess }));
+
+    await act(async () => {
+      await result.current.submit({
+        name: "강철짐",
+        address: null,
+        lat: 999,
+        lng: 127.0,
+        phone: null,
+      });
+    });
+
+    expect(registerGymMock).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.error).toContain("위치");
+  });
+
   it("이름과 위경도가 유효하면 등록하고 onSuccess를 부른다", async () => {
     useAuthStore.setState({ user: NORMAL_USER });
     const created: Gym = {
