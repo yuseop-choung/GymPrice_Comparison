@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   FlatList,
   RefreshControl,
@@ -11,8 +11,9 @@ import type { ColorTheme } from "../../constants/colors";
 import { SEARCH_RADIUS_KM } from "../../constants/config";
 import { fontSize, radius, spacing } from "../../constants/layout";
 import { GymCard } from "../../features/gym/components/GymCard";
-import { KakaoMap } from "../../features/gym/components/KakaoMap";
+import { KakaoMap, type KakaoMapHandle } from "../../features/gym/components/KakaoMap";
 import type { MapBounds } from "../../features/gym/components/kakaoMapHtml";
+import { MapRecenterButton } from "../../features/gym/components/MapRecenterButton";
 import { useGymDetailGate, useNearbyGyms } from "../../features/gym/hooks";
 import { isWithinBounds } from "../../features/gym/utils";
 import { formatPrice } from "../../features/price/utils";
@@ -41,6 +42,12 @@ export default function HomeScreen() {
   // 지도에 현재 보이는 영역 — 최초 idle 이벤트 전에는 null(전체 목록을 보여준다)
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
 
+  // "내 위치로" 버튼 — 지도를 리로드하지 않고 현재 GPS 좌표로 다시 이동시킨다.
+  const mapRef = useRef<KakaoMapHandle>(null);
+  function handleRecenter() {
+    mapRef.current?.recenter(coords.lat, coords.lng);
+  }
+
   // markers는 KakaoMap의 WebView source를 useMemo로 고정하기 위한 값이므로
   // gyms가 실제로 바뀔 때만 새로 만들어야 한다(그렇지 않으면 지도가 계속 리로드된다).
   const markers = useMemo(
@@ -68,11 +75,13 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={styles.mapBox}>
         <KakaoMap
+          ref={mapRef}
           center={coords}
           markers={markers}
           onMarkerPress={openGymDetail}
           onBoundsChange={setMapBounds}
         />
+        <MapRecenterButton onPress={handleRecenter} />
       </View>
 
       <Text style={styles.sectionTitle}>내 주변 헬스장</Text>
