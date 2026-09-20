@@ -102,15 +102,53 @@ export function buildHtml(
 </head>
 <body>
   <div id="map"></div>
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false&libraries=clusterer"></script>
   <script>
     kakao.maps.load(function () {
       var map = new kakao.maps.Map(document.getElementById('map'), {
         center: new kakao.maps.LatLng(${center.lat}, ${center.lng}),
         level: 4
       });
+      // RN에서 injectJavaScript로 지도를 다시 움직일 수 있도록(예: "내 위치로" 버튼)
+      // map 인스턴스를 전역에 노출한다.
+      window.__map = map;
+
+      // 헬스장이 많아질 때를 대비한 마커 클러스터링. 이 레벨(축소 정도) 이상에서는
+      // 가까운 헬스장들을 카카오맵이 자동으로 숫자 배지 하나로 묶어 보여준다.
+      // (레벨 숫자가 클수록 더 축소된 상태 — 예: 도시 전체 vs 동네 단위)
+      var CLUSTER_MIN_LEVEL = 6;
+
+      // 클러스터러가 관리할 마커의 아이콘은 작은 점 하나로만 표시한다. 실제
+      // 이름/가격을 보여주는 말풍선(CustomOverlay, 아래)은 확대(레벨 <
+      // CLUSTER_MIN_LEVEL)했을 때만 별도로 그린다 — 마커가 수백 개로 늘어도
+      // 축소 상태에서는 말풍선 DOM 없이 배지만 그려지므로 드래그 중 버벅임이
+      // 크게 줄어든다. 점 마커는 배지로 묶이지 않은(외딴 지역) 헬스장이 축소
+      // 상태에서도 아예 안 보이는 일이 없도록 항상 유지한다.
+      var dotImage = new kakao.maps.MarkerImage(
+        'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">' +
+          '<circle cx="8" cy="8" r="6" fill="${colors.primary}" stroke="#fff" stroke-width="2"/></svg>'
+        ),
+        new kakao.maps.Size(16, 16)
+      );
+
       var gyms = ${data};
+      var markers = [];
+      var overlays = [];
+
       gyms.forEach(function (g) {
+        var position = new kakao.maps.LatLng(g.lat, g.lng);
+
+        function notifyPress() {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'marker', id: g.id }));
+          }
+        }
+
+        var marker = new kakao.maps.Marker({ position: position, image: dotImage });
+        kakao.maps.event.addListener(marker, 'click', notifyPress);
+        markers.push(marker);
+
         var wrap = document.createElement('div');
         wrap.className = 'pill';
         var nameEl = document.createElement('div');
@@ -121,18 +159,37 @@ export function buildHtml(
         priceEl.innerText = g.label;
         wrap.appendChild(nameEl);
         wrap.appendChild(priceEl);
-        wrap.onclick = function () {
-          if (window.ReactNativeWebView) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'marker', id: g.id }));
-          }
-        };
+        wrap.onclick = notifyPress;
         var overlay = new kakao.maps.CustomOverlay({
-          position: new kakao.maps.LatLng(g.lat, g.lng),
+          position: position,
           content: wrap,
           yAnchor: 1
         });
-        overlay.setMap(map);
+        overlays.push(overlay);
       });
+
+      var clusterer = new kakao.maps.MarkerClusterer({
+        map: map,
+        markers: markers,
+        averageCenter: true,
+        minLevel: CLUSTER_MIN_LEVEL,
+        styles: [{
+          width: '36px', height: '36px', lineHeight: '36px',
+          borderRadius: '18px', textAlign: 'center', fontWeight: 'bold',
+          fontSize: '13px', color: '#fff', background: '${colors.primary}'
+        }]
+      });
+
+      // 확대(레벨 < CLUSTER_MIN_LEVEL) 상태에서만 말풍선을 그린다. 배지로 묶여
+      // 보이는 축소 상태에서는 말풍선을 전부 숨긴다.
+      function updatePillVisibility() {
+        var showPills = map.getLevel() < CLUSTER_MIN_LEVEL;
+        overlays.forEach(function (overlay) {
+          overlay.setMap(showPills ? map : null);
+        });
+      }
+      updatePillVisibility();
+      kakao.maps.event.addListener(map, 'zoom_changed', updatePillVisibility);
 
       // 지도가 움직이거나(드래그) 확대/축소가 끝나 "가만히 있는" 상태가 될 때마다
       // 지금 화면에 보이는 영역(경계)을 RN으로 보낸다 — 목록을 그 영역 안의

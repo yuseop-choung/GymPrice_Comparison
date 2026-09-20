@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type { ColorTheme } from "../../../constants/colors";
@@ -16,6 +16,12 @@ interface KakaoMapProps {
   onBoundsChange?: (bounds: MapBounds) => void;
 }
 
+/** ref로 지도를 명령형으로 제어하기 위한 핸들 (예: "내 위치로" 버튼) */
+export interface KakaoMapHandle {
+  /** 지도를 다시 로드하지 않고(패닝만) 주어진 좌표로 이동한다 */
+  recenter: (lat: number, lng: number) => void;
+}
+
 /**
  * 카카오맵 (WebView + Kakao Maps JS SDK)
  * - KAKAO_JS_KEY가 없으면 안내 문구를 보여준다.
@@ -25,14 +31,28 @@ interface KakaoMapProps {
  *   한다(useMemo) — 그렇지 않으면 onBoundsChange로 부모가 다시 렌더링될 때마다
  *   매번 새 html 문자열이 만들어져 지도가 계속 리로드되며 사용자가 움직인 위치가
  *   초기 위치로 되돌아가버린다.
+ * - ref.recenter()는 WebView를 리로드하지 않고 injectJavaScript로 지도만 이동시킨다
+ *   (리로드하면 마커가 다시 그려지며 깜빡이고, 사용자가 조정한 확대/축소 값도 날아간다).
  */
-export function KakaoMap({ center, markers, onMarkerPress, onBoundsChange }: KakaoMapProps) {
+export const KakaoMap = forwardRef<KakaoMapHandle, KakaoMapProps>(function KakaoMap(
+  { center, markers, onMarkerPress, onBoundsChange },
+  ref
+) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const webviewRef = useRef<WebView>(null);
   const source = useMemo(
     () => ({ html: buildHtml(center, markers, colors), baseUrl: "https://localhost" }),
     [center.lat, center.lng, markers, colors]
   );
+
+  useImperativeHandle(ref, () => ({
+    recenter(lat, lng) {
+      webviewRef.current?.injectJavaScript(
+        `if (window.__map) { window.__map.panTo(new kakao.maps.LatLng(${lat}, ${lng})); } true;`
+      );
+    },
+  }));
 
   if (!KAKAO_JS_KEY) {
     return (
@@ -46,6 +66,7 @@ export function KakaoMap({ center, markers, onMarkerPress, onBoundsChange }: Kak
 
   return (
     <WebView
+      ref={webviewRef}
       style={styles.web}
       originWhitelist={["*"]}
       source={source}
@@ -57,7 +78,7 @@ export function KakaoMap({ center, markers, onMarkerPress, onBoundsChange }: Kak
       }}
     />
   );
-}
+});
 
 function createStyles(colors: ColorTheme) {
   return StyleSheet.create({

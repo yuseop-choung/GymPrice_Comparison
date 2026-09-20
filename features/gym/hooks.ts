@@ -18,6 +18,7 @@ import {
   saveGymDetail,
   searchGyms,
 } from "./api";
+import { isValidCoordinate } from "./utils";
 
 /** 정지된 계정에게 보여줄 안내 메시지 (등록/수정 시도 전에 미리 막을 때 공용으로 쓴다) */
 const SUSPENDED_MESSAGE =
@@ -238,7 +239,7 @@ export function useRegisterGym({
       setError("헬스장 이름을 입력해주세요.");
       return;
     }
-    if (!Number.isFinite(input.lat) || !Number.isFinite(input.lng)) {
+    if (!isValidCoordinate(input.lat, input.lng)) {
       setError("위치(위도/경도)가 올바르지 않습니다.");
       return;
     }
