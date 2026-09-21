@@ -1,13 +1,12 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { StateView } from "../../components/ui/StateView";
 import type { ColorTheme } from "../../constants/colors";
 import { SEARCH_RADIUS_KM } from "../../constants/config";
-import { fontSize, radius, spacing } from "../../constants/layout";
+import { fontSize, spacing } from "../../constants/layout";
 import { GymCard } from "../../features/gym/components/GymCard";
-import { KakaoMap, type KakaoMapHandle } from "../../features/gym/components/KakaoMap";
+import { HomeMapSection } from "../../features/gym/components/HomeMapSection";
 import type { MapBounds } from "../../features/gym/components/kakaoMapHtml";
-import { MapRecenterButton } from "../../features/gym/components/MapRecenterButton";
 import { useGymDetailGate, useMapFocus, useNearbyGyms } from "../../features/gym/hooks";
 import { isWithinBounds } from "../../features/gym/utils";
 import { formatPrice } from "../../features/price/utils";
@@ -17,8 +16,8 @@ import { useThemeColors } from "../../hooks/useThemeColors";
 
 /**
  * 홈 화면 — 지도 중심.
- * 지도는 화면 상단에 고정되고, 아래 "내 주변 헬스장" 목록만 스크롤된다.
- * 목록에는 지도에 현재 보이는 영역(뷰포트) 안의 헬스장만 카드로 표시한다.
+ * 지도는 화면 상단에 고정되고(그 위에 동네 검색 바), 아래 "내 주변 헬스장" 목록만
+ * 스크롤된다. 목록에는 지도에 현재 보이는 영역(뷰포트) 안의 헬스장만 표시한다.
  */
 export default function HomeScreen() {
   const colors = useThemeColors();
@@ -26,8 +25,8 @@ export default function HomeScreen() {
   const { openGymDetail } = useGymDetailGate();
   const { coords, isLoading: isLocating } = useLocation();
 
-  // 검색 탭에서 장소를 선택해 넘어온 경우, 그 위치를 GPS 대신 기준으로 쓴다.
-  const { effectiveCoords, isSearchFocused, clearFocus } = useMapFocus(coords);
+  // 지도 위 동네 검색으로 다른 위치를 선택하면 GPS 대신 그 위치를 기준으로 쓴다.
+  const { effectiveCoords, isSearchFocused, focusOn, clearFocus } = useMapFocus(coords);
 
   const { gyms, isLoading, error, refetch } = useNearbyGyms(
     effectiveCoords.lat,
@@ -39,16 +38,6 @@ export default function HomeScreen() {
 
   // 지도에 현재 보이는 영역 — 최초 idle 이벤트 전에는 null(전체 목록을 보여준다)
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
-
-  // "내 위치로" 버튼 — 검색 위치 표시 중이면 해제(GPS로 리로드), 아니면 패닝만 한다.
-  const mapRef = useRef<KakaoMapHandle>(null);
-  function handleRecenter() {
-    if (isSearchFocused) {
-      clearFocus();
-      return;
-    }
-    mapRef.current?.recenter(coords.lat, coords.lng);
-  }
 
   // gyms가 바뀔 때만 새로 만들어야 지도가 불필요하게 리로드되지 않는다.
   const markers = useMemo(
@@ -74,16 +63,16 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.mapBox}>
-        <KakaoMap
-          ref={mapRef}
-          center={effectiveCoords}
-          markers={markers}
-          onMarkerPress={openGymDetail}
-          onBoundsChange={setMapBounds}
-        />
-        <MapRecenterButton onPress={handleRecenter} />
-      </View>
+      <HomeMapSection
+        gpsCoords={coords}
+        effectiveCoords={effectiveCoords}
+        isSearchFocused={isSearchFocused}
+        onFocusPlace={focusOn}
+        onClearFocus={clearFocus}
+        markers={markers}
+        onMarkerPress={openGymDetail}
+        onBoundsChange={setMapBounds}
+      />
 
       <Text style={styles.sectionTitle}>내 주변 헬스장</Text>
 
@@ -127,13 +116,6 @@ function createStyles(colors: ColorTheme) {
     container: {
       flex: 1,
       backgroundColor: colors.background,
-    },
-    mapBox: {
-      height: 220,
-      borderRadius: radius.lg,
-      overflow: "hidden",
-      margin: spacing.lg,
-      marginBottom: spacing.md,
     },
     sectionTitle: {
       fontSize: fontSize.lg,

@@ -85,8 +85,12 @@ function delay<T>(value: T, ms = 300): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
 }
 
-export function getNearbyGymsMock(): Promise<GymWithPrice[]> {
-  const result: GymWithPrice[] = MOCK_GYMS.map((gym) => {
+/**
+ * 헬스장 목록에 "1개월" 최저가를 붙인다 (getNearbyGymsMock/searchGymsWithPriceMock 공용,
+ * api.ts의 attachLowestPrices와 동일 로직).
+ */
+function attachLowestPricesMock(gyms: Gym[]): GymWithPrice[] {
+  return gyms.map((gym) => {
     // 홈/리스트의 대표 최저가는 "1개월" 라벨 + 관리자 승인(approved)된 것만 반영한다.
     const monthlyPrices = MOCK_PRICES.filter(
       (p) => p.gym_id === gym.id && p.label === "1개월" && p.status === "approved"
@@ -99,7 +103,10 @@ export function getNearbyGymsMock(): Promise<GymWithPrice[]> {
       lowest_price_1m: values.length > 0 ? Math.min(...values) : null,
     };
   });
-  return delay(result);
+}
+
+export function getNearbyGymsMock(): Promise<GymWithPrice[]> {
+  return delay(attachLowestPricesMock(MOCK_GYMS));
 }
 
 export function getMyPricesMock(userId: string): Promise<MyPriceItem[]> {
@@ -182,6 +189,13 @@ export function searchGymsMock(keyword: string): Promise<Gym[]> {
   const q = keyword.trim().toLowerCase();
   if (q === "") return delay([]);
   return delay(MOCK_GYMS.filter((g) => g.name.toLowerCase().includes(q)));
+}
+
+/** 이름으로 헬스장 검색 + 1개월 최저가 포함 목(mock) — api.ts의 searchGymsWithPrice와 동일 */
+export function searchGymsWithPriceMock(keyword: string): Promise<GymWithPrice[]> {
+  const q = keyword.trim().toLowerCase();
+  if (q === "") return delay([]);
+  return delay(attachLowestPricesMock(MOCK_GYMS.filter((g) => g.name.toLowerCase().includes(q))));
 }
 
 export function registerGymMock(

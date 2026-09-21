@@ -19,6 +19,7 @@ import {
   registerGymMock,
   saveGymDetailMock,
   searchGymsMock,
+  searchGymsWithPriceMock,
   submitPricesMock,
   updatePriceMock,
 } from "./mock";
@@ -59,12 +60,18 @@ export async function getNearbyGyms(
   const inRadius = (data ?? []).filter(
     (gym) => distanceKm(lat, lng, gym.lat, gym.lng) <= radiusKm
   );
-  if (inRadius.length === 0) return [];
+  return attachLowestPrices(inRadius);
+}
 
-  // 반경 내 헬스장들의 "1개월" 가격을 모아 최저가를 계산한다.
-  // (헬스장은 PT 횟수권 등 다른 라벨의 가격도 등록할 수 있지만, 홈/리스트의
-  //  대표 최저가는 기간권 비교가 핵심인 서비스 특성상 "1개월"로 고정한다.)
-  const ids = inRadius.map((gym) => gym.id);
+/**
+ * 헬스장 목록에 "1개월" 최저가를 붙인다 (getNearbyGyms/searchGymsWithPrice 공용).
+ * - 헬스장은 PT 횟수권 등 다른 라벨의 가격도 등록할 수 있지만, 홈/리스트의 대표
+ *   최저가는 기간권 비교가 핵심인 서비스 특성상 "1개월"로 고정한다.
+ */
+async function attachLowestPrices(gyms: Gym[]): Promise<GymWithPrice[]> {
+  if (gyms.length === 0) return [];
+
+  const ids = gyms.map((gym) => gym.id);
   const { data: prices, error: priceError } = await supabase
     .from("gym_prices")
     .select("gym_id, user_id, price, status, created_at")
@@ -96,7 +103,7 @@ export async function getNearbyGyms(
     }
   }
 
-  return inRadius.map((gym) => ({
+  return gyms.map((gym) => ({
     ...gym,
     lowest_price_1m: lowestByGym.get(gym.id) ?? null,
   }));
@@ -223,6 +230,17 @@ export async function searchGyms(keyword: string): Promise<Gym[]> {
     .returns<Gym[]>();
   if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+/**
+ * 이름으로 헬스장 검색 + 1개월 최저가 포함 (리스트 화면의 "전체에서 검색"용).
+ * - searchGyms와 달리 목록 카드에 가격을 함께 보여주고 가격대 필터를 적용할 수 있다.
+ */
+export async function searchGymsWithPrice(keyword: string): Promise<GymWithPrice[]> {
+  if (USE_MOCK) return searchGymsWithPriceMock(keyword);
+
+  const gyms = await searchGyms(keyword);
+  return attachLowestPrices(gyms);
 }
 
 /** 가격 단건 조회 */

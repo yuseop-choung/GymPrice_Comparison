@@ -8,14 +8,17 @@ import {
   registerGym,
   saveGymDetail,
   searchGyms,
+  searchGymsWithPrice,
 } from "./api";
 import {
   useEditGymDetail,
   useGymDetailGate,
+  useGymListing,
   useMapFocus,
   useNearbyGyms,
   useRegisterGym,
   useSearchGyms,
+  useSearchGymsWithPrice,
 } from "./hooks";
 
 // api 모듈을 목으로 대체 (실제 supabase 로드 방지)
@@ -26,13 +29,12 @@ jest.mock("./api", () => ({
   getGymWithPrices: jest.fn(),
   registerGym: jest.fn(),
   searchGyms: jest.fn(),
+  searchGymsWithPrice: jest.fn(),
 }));
 
 const mockPush = jest.fn();
-const mockUseLocalSearchParams = jest.fn(() => ({}) as Record<string, string | undefined>);
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush }),
-  useLocalSearchParams: () => mockUseLocalSearchParams(),
 }));
 
 // useAuthStore가 내부적으로 로드하는 lib/api/auth → lib/supabase가 테스트 환경(.env
@@ -47,6 +49,7 @@ const saveGymDetailMock = saveGymDetail as jest.Mock;
 const getNearbyGymsMock = getNearbyGyms as jest.Mock;
 const registerGymMock = registerGym as jest.Mock;
 const searchGymsMock = searchGyms as jest.Mock;
+const searchGymsWithPriceMock = searchGymsWithPrice as jest.Mock;
 
 const DETAIL: GymDetail = {
   id: "d1",
@@ -425,11 +428,7 @@ describe("useNearbyGyms", () => {
 });
 
 describe("useMapFocus", () => {
-  beforeEach(() => {
-    mockUseLocalSearchParams.mockReturnValue({});
-  });
-
-  it("focus 파라미터가 없으면 GPS 좌표를 그대로 쓴다", async () => {
+  it("초기에는 GPS 좌표를 그대로 쓴다", async () => {
     const gps = { lat: 37.5, lng: 127.0 };
     const { result } = await renderHook(() => useMapFocus(gps));
 
@@ -437,25 +436,24 @@ describe("useMapFocus", () => {
     expect(result.current.isSearchFocused).toBe(false);
   });
 
-  it("focusLat/focusLng가 있으면 그 위치를 기준으로 쓴다", async () => {
-    mockUseLocalSearchParams.mockReturnValue({
-      focusLat: "37.123",
-      focusLng: "127.456",
-    });
+  it("focusOn을 호출하면 그 위치를 기준으로 쓴다", async () => {
     const gps = { lat: 37.5, lng: 127.0 };
     const { result } = await renderHook(() => useMapFocus(gps));
+
+    await act(async () => {
+      result.current.focusOn({ lat: 37.123, lng: 127.456 });
+    });
 
     expect(result.current.effectiveCoords).toEqual({ lat: 37.123, lng: 127.456 });
     expect(result.current.isSearchFocused).toBe(true);
   });
 
   it("clearFocus를 호출하면 GPS 좌표로 되돌아간다", async () => {
-    mockUseLocalSearchParams.mockReturnValue({
-      focusLat: "37.123",
-      focusLng: "127.456",
-    });
     const gps = { lat: 37.5, lng: 127.0 };
     const { result } = await renderHook(() => useMapFocus(gps));
+    await act(async () => {
+      result.current.focusOn({ lat: 37.123, lng: 127.456 });
+    });
     expect(result.current.isSearchFocused).toBe(true);
 
     await act(async () => {
@@ -464,5 +462,124 @@ describe("useMapFocus", () => {
 
     expect(result.current.effectiveCoords).toEqual(gps);
     expect(result.current.isSearchFocused).toBe(false);
+  });
+});
+
+describe("useSearchGymsWithPrice", () => {
+  beforeEach(() => searchGymsWithPriceMock.mockReset());
+
+  it("검색어가 비어있으면 API를 호출하지 않는다", async () => {
+    const { result } = await renderHook(() => useSearchGymsWithPrice());
+
+    await act(async () => {
+      await result.current.search("   ");
+    });
+
+    expect(searchGymsWithPriceMock).not.toHaveBeenCalled();
+    expect(result.current.results).toEqual([]);
+  });
+
+  it("검색에 성공하면 결과를 채운다", async () => {
+    searchGymsWithPriceMock.mockResolvedValue([makeGym("g1")]);
+    const { result } = await renderHook(() => useSearchGymsWithPrice());
+
+    await act(async () => {
+      await result.current.search("강철");
+    });
+
+    expect(searchGymsWithPriceMock).toHaveBeenCalledWith("강철");
+    expect(result.current.results).toHaveLength(1);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("검색 실패 시 에러 메시지를 채운다", async () => {
+    searchGymsWithPriceMock.mockRejectedValue(new Error("네트워크 오류"));
+    const { result } = await renderHook(() => useSearchGymsWithPrice());
+
+    await act(async () => {
+      await result.current.search("강철");
+    });
+
+    expect(result.current.error).toBe("네트워크 오류");
+    expect(result.current.results).toEqual([]);
+  });
+});
+
+describe("useGymListing", () => {
+  const COORDS = { lat: 37.5, lng: 127.0 };
+
+  beforeEach(() => {
+    getNearbyGymsMock.mockReset();
+    searchGymsWithPriceMock.mockReset();
+  });
+
+  it("기본은 내 주변 목록을 거리순으로 보여준다", async () => {
+    getNearbyGymsMock.mockResolvedValue([
+      { ...makeGym("far"), lat: 37.6, lng: 127.1 },
+      { ...makeGym("near"), lat: 37.5001, lng: 127.0001 },
+    ]);
+    const { result } = await renderHook(() => useGymListing(COORDS, false));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.gyms.map((g) => g.id)).toEqual(["near", "far"]);
+  });
+
+  it("키워드를 입력하면 내 주변 목록 안에서 실시간으로 필터링한다 (API 호출 없음)", async () => {
+    getNearbyGymsMock.mockResolvedValue([
+      { ...makeGym("gym-1"), name: "강철짐" },
+      { ...makeGym("gym-2"), name: "헬스앤라이프" },
+    ]);
+    const { result } = await renderHook(() => useGymListing(COORDS, false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      result.current.setKeyword("강철");
+    });
+
+    expect(result.current.gyms.map((g) => g.id)).toEqual(["gym-1"]);
+    expect(searchGymsWithPriceMock).not.toHaveBeenCalled();
+  });
+
+  it("검색을 제출하면 반경 제한 없이 전체 DB에서 검색한 결과로 전환하고, 키워드를 지우면 되돌아간다", async () => {
+    getNearbyGymsMock.mockResolvedValue([{ ...makeGym("near"), name: "근처짐" }]);
+    searchGymsWithPriceMock.mockResolvedValue([
+      { ...makeGym("far-away"), name: "먼동네짐" },
+    ]);
+    const { result } = await renderHook(() => useGymListing(COORDS, false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      result.current.setKeyword("먼동네");
+    });
+    await act(async () => {
+      result.current.submitSearch();
+    });
+
+    expect(searchGymsWithPriceMock).toHaveBeenCalledWith("먼동네");
+    await waitFor(() =>
+      expect(result.current.gyms.map((g) => g.id)).toEqual(["far-away"])
+    );
+
+    await act(async () => {
+      result.current.setKeyword("");
+    });
+
+    expect(result.current.gyms.map((g) => g.id)).toEqual(["near"]);
+  });
+
+  it("가격대 필터를 적용하면 최저가가 그 이하인 헬스장만 보여준다 (가격 미정은 제외)", async () => {
+    getNearbyGymsMock.mockResolvedValue([
+      { ...makeGym("cheap"), lowest_price_1m: 40000 },
+      { ...makeGym("expensive"), lowest_price_1m: 150000 },
+      { ...makeGym("unknown"), lowest_price_1m: null },
+    ]);
+    const { result } = await renderHook(() => useGymListing(COORDS, false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      result.current.setMaxPrice(50000);
+    });
+
+    expect(result.current.gyms.map((g) => g.id)).toEqual(["cheap"]);
   });
 });

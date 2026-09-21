@@ -1,6 +1,7 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
+import { SEARCH_RADIUS_KM } from "../../constants/config";
 import { toFriendlyErrorMessage } from "../../lib/api/errors";
 import { useAuthStore } from "../../store/authStore";
 import type {
@@ -17,8 +18,9 @@ import {
   registerGym,
   saveGymDetail,
   searchGyms,
+  searchGymsWithPrice,
 } from "./api";
-import { isValidCoordinate } from "./utils";
+import { distanceKm, isValidCoordinate } from "./utils";
 
 /** 정지된 계정에게 보여줄 안내 메시지 (등록/수정 시도 전에 미리 막을 때 공용으로 쓴다) */
 const SUSPENDED_MESSAGE =
@@ -164,32 +166,28 @@ export function useNearbyGyms(
 interface UseMapFocusResult {
   /** 지도/주변 헬스장 조회가 기준으로 삼을 좌표 — 검색 위치가 있으면 그쪽, 없으면 GPS */
   effectiveCoords: { lat: number; lng: number };
-  /** 검색으로 이동해 GPS가 아닌 위치를 보고 있는 상태인지 */
+  /** 동네 검색으로 이동해 GPS가 아닌 위치를 보고 있는 상태인지 */
   isSearchFocused: boolean;
+  /** 동네 검색 결과를 선택했을 때 호출 — 그 좌표를 기준으로 바꾼다 */
+  focusOn: (coords: { lat: number; lng: number }) => void;
   /** 검색 위치를 해제하고 GPS 기준으로 되돌린다 */
   clearFocus: () => void;
 }
 
 /**
  * 홈 화면 지도가 기준으로 삼을 좌표를 결정하는 훅 (비즈니스 로직 전담)
- * - 검색 탭에서 장소를 선택하면 focusLat/focusLng 라우트 파라미터로 넘어온다.
- *   그 값이 있으면 GPS 대신 그 위치를 기준으로 지도/목록을 보여준다.
+ * - 지도 위 "동네 검색"에서 장소를 선택하면 focusOn으로 그 위치를 기준으로 바꾸고,
+ *   "내 위치" 버튼(clearFocus)을 누르면 다시 GPS 좌표로 돌아간다.
  */
 export function useMapFocus(gpsCoords: { lat: number; lng: number }): UseMapFocusResult {
-  const params = useLocalSearchParams<{ focusLat?: string; focusLng?: string }>();
   const [searchFocus, setSearchFocus] = useState<{ lat: number; lng: number } | null>(
     null
   );
 
-  useEffect(() => {
-    if (params.focusLat && params.focusLng) {
-      setSearchFocus({ lat: Number(params.focusLat), lng: Number(params.focusLng) });
-    }
-  }, [params.focusLat, params.focusLng]);
-
   return {
     effectiveCoords: searchFocus ?? gpsCoords,
     isSearchFocused: searchFocus !== null,
+    focusOn: (coords) => setSearchFocus(coords),
     clearFocus: () => setSearchFocus(null),
   };
 }
@@ -240,6 +238,161 @@ export function useSearchGyms(): UseSearchGymsResult {
   }
 
   return { results, isSearching, hasSearched, error, search, reset };
+}
+
+interface UseSearchGymsWithPriceResult {
+  results: GymWithPrice[];
+  isSearching: boolean;
+  error: string | null;
+  search: (keyword: string) => Promise<void>;
+  reset: () => void;
+}
+
+/**
+ * 이름으로 헬스장 검색(1개월 최저가 포함) 훅 (비즈니스 로직 전담)
+ * - 리스트 화면의 "전체에서 검색"에서 쓴다 — useSearchGyms와 달리 반경 제한이
+ *   없고, 카드에 가격/가격대 필터를 적용할 수 있도록 GymWithPrice를 반환한다.
+ */
+export function useSearchGymsWithPrice(): UseSearchGymsWithPriceResult {
+  const [results, setResults] = useState<GymWithPrice[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function search(keyword: string): Promise<void> {
+    if (keyword.trim() === "") {
+      setResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+    try {
+      setResults(await searchGymsWithPrice(keyword));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "헬스장 검색에 실패했습니다.");
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  function reset(): void {
+    setResults([]);
+    setError(null);
+  }
+
+  return { results, isSearching, error, search, reset };
+}
+
+export type GymSortKey = "distance" | "price";
+
+interface UseGymListingResult {
+  keyword: string;
+  /** 입력할 때마다 호출 — 비어있는 값으로 지우면 곧바로 "내 주변" 모드로 돌아간다 */
+  setKeyword: (text: string) => void;
+  /** 검색 제출(Enter) — 반경 제한 없이 전체 DB에서 이름으로 검색한다 */
+  submitSearch: () => void;
+  sortKey: GymSortKey;
+  setSortKey: (key: GymSortKey) => void;
+  /** 이 값 이하인 1개월 최저가만 보여준다. null이면 필터 없음 */
+  maxPrice: number | null;
+  setMaxPrice: (price: number | null) => void;
+  gyms: GymWithPrice[];
+  isLoading: boolean;
+  error: string | null;
+  refetch: () => void;
+}
+
+/**
+ * 리스트 화면의 헬스장 목록 로직 (비즈니스 로직 전담)
+ * - 기본은 "내 주변"(반경 내) 목록을 보여주고, 키워드를 입력하는 동안은 그 안에서
+ *   실시간으로 필터링한다(빠른 피드백, 네트워크 호출 없음).
+ * - 검색을 제출(Enter)하면 반경 제한 없이 전체 DB에서 이름으로 검색한 결과로
+ *   전환한다. 키워드를 지우면 다시 "내 주변" 모드로 돌아간다.
+ * - 정렬(거리순/최저가순)과 가격대 필터는 두 모드 모두에 동일하게 적용된다.
+ */
+export function useGymListing(
+  coords: { lat: number; lng: number },
+  isLocating: boolean
+): UseGymListingResult {
+  const [keyword, setKeywordState] = useState("");
+  const [dbSearchKeyword, setDbSearchKeyword] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<GymSortKey>("distance");
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+
+  const {
+    gyms: nearbyGyms,
+    isLoading: isLoadingNearby,
+    error: nearbyError,
+    refetch,
+  } = useNearbyGyms(coords.lat, coords.lng, SEARCH_RADIUS_KM, !isLocating);
+
+  const {
+    results: dbResults,
+    isSearching,
+    error: dbError,
+    search: runDbSearch,
+    reset: resetDbSearch,
+  } = useSearchGymsWithPrice();
+
+  const isDbSearchMode = dbSearchKeyword !== null;
+
+  function setKeyword(text: string): void {
+    setKeywordState(text);
+    if (text.trim() === "") {
+      setDbSearchKeyword(null);
+      resetDbSearch();
+    }
+  }
+
+  function submitSearch(): void {
+    const trimmed = keyword.trim();
+    if (trimmed === "") return;
+    setDbSearchKeyword(trimmed);
+    runDbSearch(trimmed);
+  }
+
+  const gyms = useMemo(() => {
+    const source = isDbSearchMode
+      ? dbResults
+      : keyword.trim() === ""
+        ? nearbyGyms
+        : nearbyGyms.filter(
+            (g) => g.name.includes(keyword) || (g.address ?? "").includes(keyword)
+          );
+
+    const filtered =
+      maxPrice === null
+        ? source
+        : source.filter(
+            (g) => g.lowest_price_1m !== null && g.lowest_price_1m <= maxPrice
+          );
+
+    return [...filtered].sort((a, b) => {
+      if (sortKey === "price") {
+        if (a.lowest_price_1m === null) return 1;
+        if (b.lowest_price_1m === null) return -1;
+        return a.lowest_price_1m - b.lowest_price_1m;
+      }
+      return (
+        distanceKm(coords.lat, coords.lng, a.lat, a.lng) -
+        distanceKm(coords.lat, coords.lng, b.lat, b.lng)
+      );
+    });
+  }, [isDbSearchMode, dbResults, nearbyGyms, keyword, maxPrice, sortKey, coords.lat, coords.lng]);
+
+  return {
+    keyword,
+    setKeyword,
+    submitSearch,
+    sortKey,
+    setSortKey,
+    maxPrice,
+    setMaxPrice,
+    gyms,
+    isLoading: isDbSearchMode ? isSearching : isLoadingNearby,
+    error: isDbSearchMode ? dbError : nearbyError,
+    refetch,
+  };
 }
 
 /** 헬스장 등록 입력값 (id, created_at 은 서버에서 생성) */
