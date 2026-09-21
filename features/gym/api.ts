@@ -11,6 +11,7 @@ import type {
 } from "../../types";
 import {
   deletePriceMock,
+  getAllGymsMock,
   getGymDetailMock,
   getGymWithPricesMock,
   getMyPricesMock,
@@ -19,7 +20,6 @@ import {
   registerGymMock,
   saveGymDetailMock,
   searchGymsMock,
-  searchGymsWithPriceMock,
   submitPricesMock,
   updatePriceMock,
 } from "./mock";
@@ -64,7 +64,20 @@ export async function getNearbyGyms(
 }
 
 /**
- * 헬스장 목록에 "1개월" 최저가를 붙인다 (getNearbyGyms/searchGymsWithPrice 공용).
+ * 전체 헬스장 목록 조회 (1개월 최저가 포함) — 리스트 화면 전체 목록용.
+ * - getNearbyGyms와 달리 반경 제한이 없다. 지역/가격대 필터, 검색어 필터링은
+ *   클라이언트(useGymListing)가 이 전체 목록을 대상으로 처리한다.
+ */
+export async function getAllGyms(): Promise<GymWithPrice[]> {
+  if (USE_MOCK) return getAllGymsMock();
+
+  const { data, error } = await supabase.from("gyms").select("*").returns<Gym[]>();
+  if (error) throw new Error(error.message);
+  return attachLowestPrices(data ?? []);
+}
+
+/**
+ * 헬스장 목록에 "1개월" 최저가를 붙인다 (getNearbyGyms/getAllGyms 공용).
  * - 헬스장은 PT 횟수권 등 다른 라벨의 가격도 등록할 수 있지만, 홈/리스트의 대표
  *   최저가는 기간권 비교가 핵심인 서비스 특성상 "1개월"로 고정한다.
  */
@@ -230,17 +243,6 @@ export async function searchGyms(keyword: string): Promise<Gym[]> {
     .returns<Gym[]>();
   if (error) throw new Error(error.message);
   return data ?? [];
-}
-
-/**
- * 이름으로 헬스장 검색 + 1개월 최저가 포함 (리스트 화면의 "전체에서 검색"용).
- * - searchGyms와 달리 목록 카드에 가격을 함께 보여주고 가격대 필터를 적용할 수 있다.
- */
-export async function searchGymsWithPrice(keyword: string): Promise<GymWithPrice[]> {
-  if (USE_MOCK) return searchGymsWithPriceMock(keyword);
-
-  const gyms = await searchGyms(keyword);
-  return attachLowestPrices(gyms);
 }
 
 /** 가격 단건 조회 */
