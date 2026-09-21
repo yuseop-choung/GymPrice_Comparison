@@ -1,4 +1,4 @@
-import { isIrrelevantPlace, searchPlaces, toKakaoPlace } from "./kakao";
+import { isIrrelevantPlace, searchLocations, searchPlaces, toKakaoPlace } from "./kakao";
 
 describe("toKakaoPlace", () => {
   it("카카오 API 응답을 앱에서 쓰는 형태로 변환한다 (road_address_name 우선)", () => {
@@ -149,5 +149,64 @@ describe("searchPlaces - REST 키가 있을 때 결과 필터링", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("강철짐 강남점");
+  });
+});
+
+describe("searchLocations", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  it("검색어가 비어있으면 네트워크 요청 없이 빈 배열을 반환한다", async () => {
+    const result = await searchLocations("   ");
+
+    expect(result).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("REST 키가 없으면(테스트 환경 기본값) 네트워크 요청 없이 빈 배열을 반환한다", async () => {
+    const result = await searchLocations("강남역");
+
+    expect(result).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("searchLocations - REST 키가 있을 때", () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.doMock("../../constants/config", () => ({ KAKAO_REST_KEY: "test-key" }));
+  });
+
+  it("지하철역처럼 searchPlaces면 걸러졌을 결과도 그대로 포함한다 (기준 좌표/반경도 요구하지 않는다)", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        documents: [
+          {
+            id: "1",
+            place_name: "강남역",
+            category_name: "교통,수송 > 지하철,전철 > 수도권2호선",
+            address_name: "서울 강남구 역삼동",
+            road_address_name: "",
+            x: "127.028",
+            y: "37.4979",
+            distance: "",
+          },
+        ],
+      }),
+    });
+
+    const { searchLocations: searchLocationsWithKey } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("./kakao") as typeof import("./kakao");
+    const result = await searchLocationsWithKey("강남역");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("강남역");
+
+    const requestedUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+    expect(requestedUrl).not.toContain("radius");
+    expect(requestedUrl).toContain("sort=accuracy");
   });
 });

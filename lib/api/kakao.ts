@@ -98,3 +98,31 @@ export async function searchPlaces(
   const data: KakaoKeywordResponse = await response.json();
   return data.documents.filter((doc) => !isIrrelevantPlace(doc)).map(toKakaoPlace);
 }
+
+/**
+ * 키워드로 지역/장소를 검색한다 — 지도를 그 위치로 이동시키기 위한 용도.
+ * - searchPlaces와 달리 기준 좌표/반경 없이 전국을 대상으로 하고(정확도순 정렬),
+ *   지하철역·정류장 등도 제외하지 않는다("강남역"처럼 그 자체가 검색 목적지일 수 있다).
+ * - REST 키가 없거나 검색어가 비어있으면 빈 배열을 반환한다.
+ */
+export async function searchLocations(query: string): Promise<KakaoPlace[]> {
+  if (!KAKAO_REST_KEY || query.trim() === "") return [];
+
+  const params = new URLSearchParams({
+    query: query.trim(),
+    sort: "accuracy",
+    size: "15",
+  });
+
+  const response = await fetch(
+    `https://dapi.kakao.com/v2/local/search/keyword.json?${params.toString()}`,
+    { headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}` } }
+  );
+
+  if (!response.ok) {
+    throw new Error("장소 검색에 실패했습니다.");
+  }
+
+  const data: KakaoKeywordResponse = await response.json();
+  return data.documents.map(toKakaoPlace);
+}

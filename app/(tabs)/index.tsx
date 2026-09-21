@@ -1,11 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { StateView } from "../../components/ui/StateView";
 import type { ColorTheme } from "../../constants/colors";
 import { SEARCH_RADIUS_KM } from "../../constants/config";
@@ -14,7 +8,7 @@ import { GymCard } from "../../features/gym/components/GymCard";
 import { KakaoMap, type KakaoMapHandle } from "../../features/gym/components/KakaoMap";
 import type { MapBounds } from "../../features/gym/components/kakaoMapHtml";
 import { MapRecenterButton } from "../../features/gym/components/MapRecenterButton";
-import { useGymDetailGate, useNearbyGyms } from "../../features/gym/hooks";
+import { useGymDetailGate, useMapFocus, useNearbyGyms } from "../../features/gym/hooks";
 import { isWithinBounds } from "../../features/gym/utils";
 import { formatPrice } from "../../features/price/utils";
 import { useSyncUserLocation } from "../../features/user/hooks";
@@ -31,9 +25,13 @@ export default function HomeScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { openGymDetail } = useGymDetailGate();
   const { coords, isLoading: isLocating } = useLocation();
+
+  // 검색 탭에서 장소를 선택해 넘어온 경우, 그 위치를 GPS 대신 기준으로 쓴다.
+  const { effectiveCoords, isSearchFocused, clearFocus } = useMapFocus(coords);
+
   const { gyms, isLoading, error, refetch } = useNearbyGyms(
-    coords.lat,
-    coords.lng,
+    effectiveCoords.lat,
+    effectiveCoords.lng,
     SEARCH_RADIUS_KM,
     !isLocating // GPS가 아직 확정되지 않았으면(DEFAULT_COORDS 상태) 조회를 미룬다
   );
@@ -42,14 +40,17 @@ export default function HomeScreen() {
   // 지도에 현재 보이는 영역 — 최초 idle 이벤트 전에는 null(전체 목록을 보여준다)
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
 
-  // "내 위치로" 버튼 — 지도를 리로드하지 않고 현재 GPS 좌표로 다시 이동시킨다.
+  // "내 위치로" 버튼 — 검색 위치 표시 중이면 해제(GPS로 리로드), 아니면 패닝만 한다.
   const mapRef = useRef<KakaoMapHandle>(null);
   function handleRecenter() {
+    if (isSearchFocused) {
+      clearFocus();
+      return;
+    }
     mapRef.current?.recenter(coords.lat, coords.lng);
   }
 
-  // markers는 KakaoMap의 WebView source를 useMemo로 고정하기 위한 값이므로
-  // gyms가 실제로 바뀔 때만 새로 만들어야 한다(그렇지 않으면 지도가 계속 리로드된다).
+  // gyms가 바뀔 때만 새로 만들어야 지도가 불필요하게 리로드되지 않는다.
   const markers = useMemo(
     () =>
       gyms.map((g) => ({
@@ -76,7 +77,7 @@ export default function HomeScreen() {
       <View style={styles.mapBox}>
         <KakaoMap
           ref={mapRef}
-          center={coords}
+          center={effectiveCoords}
           markers={markers}
           onMarkerPress={openGymDetail}
           onBoundsChange={setMapBounds}

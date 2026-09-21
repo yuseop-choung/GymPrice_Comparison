@@ -12,6 +12,7 @@ import {
 import {
   useEditGymDetail,
   useGymDetailGate,
+  useMapFocus,
   useNearbyGyms,
   useRegisterGym,
   useSearchGyms,
@@ -28,8 +29,10 @@ jest.mock("./api", () => ({
 }));
 
 const mockPush = jest.fn();
+const mockUseLocalSearchParams = jest.fn(() => ({}) as Record<string, string | undefined>);
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush }),
+  useLocalSearchParams: () => mockUseLocalSearchParams(),
 }));
 
 // useAuthStore가 내부적으로 로드하는 lib/api/auth → lib/supabase가 테스트 환경(.env
@@ -418,5 +421,48 @@ describe("useNearbyGyms", () => {
     });
 
     expect(getNearbyGymsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("useMapFocus", () => {
+  beforeEach(() => {
+    mockUseLocalSearchParams.mockReturnValue({});
+  });
+
+  it("focus 파라미터가 없으면 GPS 좌표를 그대로 쓴다", async () => {
+    const gps = { lat: 37.5, lng: 127.0 };
+    const { result } = await renderHook(() => useMapFocus(gps));
+
+    expect(result.current.effectiveCoords).toEqual(gps);
+    expect(result.current.isSearchFocused).toBe(false);
+  });
+
+  it("focusLat/focusLng가 있으면 그 위치를 기준으로 쓴다", async () => {
+    mockUseLocalSearchParams.mockReturnValue({
+      focusLat: "37.123",
+      focusLng: "127.456",
+    });
+    const gps = { lat: 37.5, lng: 127.0 };
+    const { result } = await renderHook(() => useMapFocus(gps));
+
+    expect(result.current.effectiveCoords).toEqual({ lat: 37.123, lng: 127.456 });
+    expect(result.current.isSearchFocused).toBe(true);
+  });
+
+  it("clearFocus를 호출하면 GPS 좌표로 되돌아간다", async () => {
+    mockUseLocalSearchParams.mockReturnValue({
+      focusLat: "37.123",
+      focusLng: "127.456",
+    });
+    const gps = { lat: 37.5, lng: 127.0 };
+    const { result } = await renderHook(() => useMapFocus(gps));
+    expect(result.current.isSearchFocused).toBe(true);
+
+    await act(async () => {
+      result.current.clearFocus();
+    });
+
+    expect(result.current.effectiveCoords).toEqual(gps);
+    expect(result.current.isSearchFocused).toBe(false);
   });
 });

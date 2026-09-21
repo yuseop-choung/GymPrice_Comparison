@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { toFriendlyErrorMessage } from "../../lib/api/errors";
@@ -159,6 +159,39 @@ export function useNearbyGyms(
   }, [fetchGyms]);
 
   return { gyms, isLoading, error, refetch: fetchGyms };
+}
+
+interface UseMapFocusResult {
+  /** 지도/주변 헬스장 조회가 기준으로 삼을 좌표 — 검색 위치가 있으면 그쪽, 없으면 GPS */
+  effectiveCoords: { lat: number; lng: number };
+  /** 검색으로 이동해 GPS가 아닌 위치를 보고 있는 상태인지 */
+  isSearchFocused: boolean;
+  /** 검색 위치를 해제하고 GPS 기준으로 되돌린다 */
+  clearFocus: () => void;
+}
+
+/**
+ * 홈 화면 지도가 기준으로 삼을 좌표를 결정하는 훅 (비즈니스 로직 전담)
+ * - 검색 탭에서 장소를 선택하면 focusLat/focusLng 라우트 파라미터로 넘어온다.
+ *   그 값이 있으면 GPS 대신 그 위치를 기준으로 지도/목록을 보여준다.
+ */
+export function useMapFocus(gpsCoords: { lat: number; lng: number }): UseMapFocusResult {
+  const params = useLocalSearchParams<{ focusLat?: string; focusLng?: string }>();
+  const [searchFocus, setSearchFocus] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (params.focusLat && params.focusLng) {
+      setSearchFocus({ lat: Number(params.focusLat), lng: Number(params.focusLng) });
+    }
+  }, [params.focusLat, params.focusLng]);
+
+  return {
+    effectiveCoords: searchFocus ?? gpsCoords,
+    isSearchFocused: searchFocus !== null,
+    clearFocus: () => setSearchFocus(null),
+  };
 }
 
 interface UseSearchGymsResult {

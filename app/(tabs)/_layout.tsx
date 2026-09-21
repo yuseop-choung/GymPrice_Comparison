@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useThemeColors } from "../../hooks/useThemeColors";
 
-/** 하단 탭 네비게이션 — 홈 / 리스트 / 등록 / 내 정보 (4탭) */
+/** 하단 탭 네비게이션 — 홈 / 리스트 / 검색 / 등록 / 내 정보 (5탭) */
 export default function TabsLayout() {
   const colors = useThemeColors();
 
@@ -35,6 +35,15 @@ export default function TabsLayout() {
           title: "리스트",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="list-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{
+          title: "검색",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="search-outline" color={color} size={size} />
           ),
         }}
       />
