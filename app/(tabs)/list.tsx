@@ -4,41 +4,46 @@ import { StateView } from "../../components/ui/StateView";
 import type { ColorTheme } from "../../constants/colors";
 import { spacing } from "../../constants/layout";
 import { GymCard } from "../../features/gym/components/GymCard";
-import { GymListFilters } from "../../features/gym/components/GymListFilters";
+import { GymListFilterBar } from "../../features/gym/components/GymListFilterBar";
 import { useGymDetailGate, useGymListing } from "../../features/gym/hooks";
 import { useLocation } from "../../hooks/useLocation";
 import { useThemeColors } from "../../hooks/useThemeColors";
 
-/** 리스트 화면 — 검색(전체 대상) + 정렬(거리순/최저가순) + 가격대 필터. UI 전담, 로직은 useGymListing에 위임 */
+/**
+ * 리스트 화면 — 전체 헬스장 대상 검색 + 정렬(거리순/최저가순) + 가격대/지역 필터.
+ * UI 전담, 로직은 useGymListing에 위임. 필터 UI는 GymListFilterBar에 위임.
+ */
 export default function ListScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { openGymDetail } = useGymDetailGate();
-  const { coords, isLoading: isLocating } = useLocation();
+  const { coords } = useLocation();
   const {
     keyword,
     setKeyword,
-    submitSearch,
     sortKey,
     setSortKey,
     maxPrice,
     setMaxPrice,
+    region,
+    setRegion,
     gyms,
     isLoading,
     error,
     refetch,
-  } = useGymListing(coords, isLocating);
+  } = useGymListing(coords);
 
   return (
     <View style={styles.container}>
-      <GymListFilters
+      <GymListFilterBar
         keyword={keyword}
         onKeywordChange={setKeyword}
-        onSubmit={submitSearch}
         sortKey={sortKey}
         onSortKeyChange={setSortKey}
         maxPrice={maxPrice}
         onMaxPriceChange={setMaxPrice}
+        region={region}
+        onRegionChange={setRegion}
       />
 
       {isLoading && gyms.length === 0 ? (

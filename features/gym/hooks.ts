@@ -1,7 +1,6 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
-import { SEARCH_RADIUS_KM } from "../../constants/config";
 import { toFriendlyErrorMessage } from "../../lib/api/errors";
 import { useAuthStore } from "../../store/authStore";
 import type {
@@ -12,13 +11,13 @@ import type {
   GymWithPrice,
 } from "../../types";
 import {
+  getAllGyms,
   getGymDetail,
   getGymWithPrices,
   getNearbyGyms,
   registerGym,
   saveGymDetail,
   searchGyms,
-  searchGymsWithPrice,
 } from "./api";
 import { distanceKm, isValidCoordinate } from "./utils";
 
@@ -240,62 +239,24 @@ export function useSearchGyms(): UseSearchGymsResult {
   return { results, isSearching, hasSearched, error, search, reset };
 }
 
-interface UseSearchGymsWithPriceResult {
-  results: GymWithPrice[];
-  isSearching: boolean;
-  error: string | null;
-  search: (keyword: string) => Promise<void>;
-  reset: () => void;
-}
-
-/**
- * 이름으로 헬스장 검색(1개월 최저가 포함) 훅 (비즈니스 로직 전담)
- * - 리스트 화면의 "전체에서 검색"에서 쓴다 — useSearchGyms와 달리 반경 제한이
- *   없고, 카드에 가격/가격대 필터를 적용할 수 있도록 GymWithPrice를 반환한다.
- */
-export function useSearchGymsWithPrice(): UseSearchGymsWithPriceResult {
-  const [results, setResults] = useState<GymWithPrice[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function search(keyword: string): Promise<void> {
-    if (keyword.trim() === "") {
-      setResults([]);
-      return;
-    }
-
-    setIsSearching(true);
-    setError(null);
-    try {
-      setResults(await searchGymsWithPrice(keyword));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "헬스장 검색에 실패했습니다.");
-    } finally {
-      setIsSearching(false);
-    }
-  }
-
-  function reset(): void {
-    setResults([]);
-    setError(null);
-  }
-
-  return { results, isSearching, error, search, reset };
-}
-
 export type GymSortKey = "distance" | "price";
+
+/** 지역 필터 값 — sigungu가 null이면 시/도 전체(그 안의 모든 시/군/구)를 대상으로 한다 */
+export interface RegionFilter {
+  sido: string;
+  sigungu: string | null;
+}
 
 interface UseGymListingResult {
   keyword: string;
-  /** 입력할 때마다 호출 — 비어있는 값으로 지우면 곧바로 "내 주변" 모드로 돌아간다 */
   setKeyword: (text: string) => void;
-  /** 검색 제출(Enter) — 반경 제한 없이 전체 DB에서 이름으로 검색한다 */
-  submitSearch: () => void;
   sortKey: GymSortKey;
   setSortKey: (key: GymSortKey) => void;
   /** 이 값 이하인 1개월 최저가만 보여준다. null이면 필터 없음 */
   maxPrice: number | null;
   setMaxPrice: (price: number | null) => void;
+  region: RegionFilter | null;
+  setRegion: (region: RegionFilter | null) => void;
   gyms: GymWithPrice[];
   isLoading: boolean;
   error: string | null;
@@ -304,68 +265,60 @@ interface UseGymListingResult {
 
 /**
  * 리스트 화면의 헬스장 목록 로직 (비즈니스 로직 전담)
- * - 기본은 "내 주변"(반경 내) 목록을 보여주고, 키워드를 입력하는 동안은 그 안에서
- *   실시간으로 필터링한다(빠른 피드백, 네트워크 호출 없음).
- * - 검색을 제출(Enter)하면 반경 제한 없이 전체 DB에서 이름으로 검색한 결과로
- *   전환한다. 키워드를 지우면 다시 "내 주변" 모드로 돌아간다.
- * - 정렬(거리순/최저가순)과 가격대 필터는 두 모드 모두에 동일하게 적용된다.
+ * - 반경 제한 없이 전체 헬스장을 대상으로 한다(getAllGyms). 검색어/가격대/지역
+ *   필터와 정렬(거리순/최저가순)은 모두 이미 불러온 전체 목록을 클라이언트에서
+ *   걸러서 적용한다 — 필터를 바꿀 때마다 다시 서버에 왕복하지 않는다.
  */
-export function useGymListing(
-  coords: { lat: number; lng: number },
-  isLocating: boolean
-): UseGymListingResult {
-  const [keyword, setKeywordState] = useState("");
-  const [dbSearchKeyword, setDbSearchKeyword] = useState<string | null>(null);
+export function useGymListing(coords: {
+  lat: number;
+  lng: number;
+}): UseGymListingResult {
+  const [keyword, setKeyword] = useState("");
   const [sortKey, setSortKey] = useState<GymSortKey>("distance");
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [region, setRegion] = useState<RegionFilter | null>(null);
 
-  const {
-    gyms: nearbyGyms,
-    isLoading: isLoadingNearby,
-    error: nearbyError,
-    refetch,
-  } = useNearbyGyms(coords.lat, coords.lng, SEARCH_RADIUS_KM, !isLocating);
+  const [allGyms, setAllGyms] = useState<GymWithPrice[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const {
-    results: dbResults,
-    isSearching,
-    error: dbError,
-    search: runDbSearch,
-    reset: resetDbSearch,
-  } = useSearchGymsWithPrice();
-
-  const isDbSearchMode = dbSearchKeyword !== null;
-
-  function setKeyword(text: string): void {
-    setKeywordState(text);
-    if (text.trim() === "") {
-      setDbSearchKeyword(null);
-      resetDbSearch();
+  const fetchAllGyms = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setAllGyms(await getAllGyms());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "헬스장 목록을 불러오지 못했습니다.");
+    } finally {
+      setIsLoading(false);
     }
-  }
+  }, []);
 
-  function submitSearch(): void {
-    const trimmed = keyword.trim();
-    if (trimmed === "") return;
-    setDbSearchKeyword(trimmed);
-    runDbSearch(trimmed);
-  }
+  useEffect(() => {
+    fetchAllGyms();
+  }, [fetchAllGyms]);
 
   const gyms = useMemo(() => {
-    const source = isDbSearchMode
-      ? dbResults
-      : keyword.trim() === ""
-        ? nearbyGyms
-        : nearbyGyms.filter(
-            (g) => g.name.includes(keyword) || (g.address ?? "").includes(keyword)
-          );
+    const q = keyword.trim();
+    let filtered =
+      q === ""
+        ? allGyms
+        : allGyms.filter((g) => g.name.includes(q) || (g.address ?? "").includes(q));
 
-    const filtered =
-      maxPrice === null
-        ? source
-        : source.filter(
-            (g) => g.lowest_price_1m !== null && g.lowest_price_1m <= maxPrice
-          );
+    if (maxPrice !== null) {
+      filtered = filtered.filter(
+        (g) => g.lowest_price_1m !== null && g.lowest_price_1m <= maxPrice
+      );
+    }
+
+    if (region !== null) {
+      filtered = filtered.filter((g) => {
+        const address = g.address ?? "";
+        if (!address.includes(region.sido)) return false;
+        if (region.sigungu && !address.includes(region.sigungu)) return false;
+        return true;
+      });
+    }
 
     return [...filtered].sort((a, b) => {
       if (sortKey === "price") {
@@ -378,20 +331,21 @@ export function useGymListing(
         distanceKm(coords.lat, coords.lng, b.lat, b.lng)
       );
     });
-  }, [isDbSearchMode, dbResults, nearbyGyms, keyword, maxPrice, sortKey, coords.lat, coords.lng]);
+  }, [allGyms, keyword, maxPrice, region, sortKey, coords.lat, coords.lng]);
 
   return {
     keyword,
     setKeyword,
-    submitSearch,
     sortKey,
     setSortKey,
     maxPrice,
     setMaxPrice,
+    region,
+    setRegion,
     gyms,
-    isLoading: isDbSearchMode ? isSearching : isLoadingNearby,
-    error: isDbSearchMode ? dbError : nearbyError,
-    refetch,
+    isLoading,
+    error,
+    refetch: fetchAllGyms,
   };
 }
 
