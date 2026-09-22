@@ -219,7 +219,13 @@
     );
   }
 
-  /** 헬스장 행 아래 펼쳐지는 부가정보(gym_details) 수정 이력 패널 */
+  /**
+   * 헬스장 행 아래 펼쳐지는 부가정보(gym_details) 수정 이력 패널
+   * - 맨 위(가장 최근) 항목은 현재 값과 같으므로 "현재"로만 표시하고, 그 아래
+   *   이전 항목들에는 "이 버전으로 복구" 버튼을 둔다 — 훼손된 내용을 되돌릴 때 쓴다.
+   * - 복구도 결국 gym_details를 UPDATE하는 것이라 그 자체가 새 이력으로 남는다
+   *   (누가 언제 복구했는지도 그대로 추적된다).
+   */
   function gymHistoryRow(gymId) {
     var entries = historyCache[gymId];
     var content;
@@ -230,11 +236,15 @@
     } else {
       content =
         '<div class="table-wrap"><table class="data-table">' +
-        "<thead><tr><th>변경일시</th><th>변경자</th><th>장비 브랜드</th><th>청결도</th><th>트레이너 수</th><th>메모</th></tr></thead>" +
+        "<thead><tr><th>변경일시</th><th>변경자</th><th>장비 브랜드</th><th>청결도</th><th>트레이너 수</th><th>메모</th><th>작업</th></tr></thead>" +
         "<tbody>" +
         entries
-          .map(function (h) {
+          .map(function (h, idx) {
             var changer = h.users ? h.users.nickname || h.users.email : "알 수 없음";
+            var action =
+              idx === 0
+                ? '<span class="cell-muted">현재</span>'
+                : '<button class="btn-ghost" data-restore-history="' + gymId + '" data-restore-index="' + idx + '">이 버전으로 복구</button>';
             return (
               "<tr>" +
               '<td class="cell-muted">' + G.fmtDate(h.changed_at) + "</td>" +
@@ -243,6 +253,7 @@
               "<td>" + (h.cleanliness != null ? h.cleanliness + "/5" : "-") + "</td>" +
               "<td>" + (h.trainer_count != null ? h.trainer_count + "명" : "-") + "</td>" +
               "<td>" + G.escapeHtml(h.memo || "-") + "</td>" +
+              "<td>" + action + "</td>" +
               "</tr>"
             );
           })
@@ -255,6 +266,18 @@
       content +
       "</td></tr>"
     );
+  }
+
+  /** 이력 다시 조회 (캐시 무시) — 최초 펼칠 때와 복구 후 갱신에 공용으로 쓴다 */
+  function fetchHistory(sb, gymId) {
+    sb.from("gym_details_history")
+      .select("*, users(nickname, email)")
+      .eq("gym_id", gymId)
+      .order("changed_at", { ascending: false })
+      .then(function (res) {
+        historyCache[gymId] = res.error ? [] : res.data || [];
+        if (historyOpenGymId === gymId) renderGyms(sb, allGyms);
+      });
   }
 
   function gymRowEdit(g) {
@@ -313,16 +336,36 @@
         }
         historyOpenGymId = id;
         renderGyms(sb, allGyms); // 먼저 "불러오는 중" 상태로 펼쳐 보여준다
-        if (!historyCache[id]) {
-          sb.from("gym_details_history")
-            .select("*, users(nickname, email)")
-            .eq("gym_id", id)
-            .order("changed_at", { ascending: false })
-            .then(function (res) {
-              historyCache[id] = res.error ? [] : res.data || [];
-              if (historyOpenGymId === id) renderGyms(sb, allGyms);
-            });
-        }
+        if (!historyCache[id]) fetchHistory(sb, id);
+      };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-restore-history]"), function (btn) {
+      btn.onclick = function () {
+        var gymId = btn.getAttribute("data-restore-history");
+        var idx = parseInt(btn.getAttribute("data-restore-index"), 10);
+        var entry = (historyCache[gymId] || [])[idx];
+        if (!entry) return;
+        if (!confirm(
+          "이 시점(" + G.fmtDate(entry.changed_at) + ")의 부가정보로 복구할까요?\n" +
+          "현재 값은 덮어씌워집니다(복구도 새 이력으로 남아요)."
+        )) return;
+        btn.disabled = true;
+        sb.from("gym_details")
+          .update({
+            equipment_brand: entry.equipment_brand,
+            cleanliness: entry.cleanliness,
+            trainer_count: entry.trainer_count,
+            memo: entry.memo,
+          })
+          .eq("gym_id", gymId)
+          .then(function (res) {
+            if (res.error) {
+              alert("복구 실패: " + res.error.message);
+              btn.disabled = false;
+              return;
+            }
+            fetchHistory(sb, gymId); // 캐시를 새 값으로 갱신해서 다시 그린다
+          });
       };
     });
     Array.prototype.forEach.call(body.querySelectorAll("button[data-save-gym]"), function (btn) {
