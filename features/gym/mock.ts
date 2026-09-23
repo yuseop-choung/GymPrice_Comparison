@@ -96,7 +96,7 @@ function attachLowestPricesMock(gyms: Gym[]): GymWithPrice[] {
       (p) => p.gym_id === gym.id && p.label === "1개월" && p.status === "approved"
     );
     // 같은 유저의 중복 제보는 최신 1건만 최저가 계산에 반영한다 (api.ts와 동일 로직).
-    const latestPrices = latestByGroup(monthlyPrices, (p) => p.user_id);
+    const latestPrices = latestByGroup(monthlyPrices, (p) => `${p.user_id}`);
     const values = latestPrices.map((p) => p.price);
     return {
       ...gym,

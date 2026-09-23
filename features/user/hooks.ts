@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  deleteAccount as deleteAccountApi,
   getCurrentUser,
   requestPasswordReset,
   restorePasswordResetSession,
@@ -91,6 +92,44 @@ export function useAuth(): UseAuthResult {
     loginWithGoogle: () => run(() => signInWithOAuth("google"), true),
     loginWithNaver: () => run(() => signInWithOAuth("naver"), true),
   };
+}
+
+interface UseAccountDeletionResult {
+  isDeleting: boolean;
+  error: string | null;
+  /** 성공하면 true, 실패하면 false를 반환한다 — 실패 시 안내를 보여줄 때 이 반환값을 쓴다
+   *  (훅 내부 state는 비동기라 호출 직후 곧바로 읽으면 갱신 전 값을 볼 수 있다). */
+  deleteAccount: () => Promise<boolean>;
+}
+
+/**
+ * 계정 삭제(회원 탈퇴) 훅 (비즈니스 로직 전담)
+ * - 삭제 확인(Alert)은 화면(profile.tsx)에서 보여주고, 이 훅은 실제 삭제
+ *   실행만 담당한다.
+ * - 성공하면 authStore의 로그인 상태를 지운다 — 루트 레이아웃이 자연스럽게
+ *   비로그인(둘러보기) 화면으로 전환한다.
+ */
+export function useAccountDeletion(): UseAccountDeletionResult {
+  const setUser = useAuthStore((state) => state.setUser);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function deleteAccount(): Promise<boolean> {
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await deleteAccountApi();
+      setUser(null);
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "계정 삭제에 실패했습니다.");
+      return false;
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  return { isDeleting, error, deleteAccount };
 }
 
 interface UseForgotPasswordResult {

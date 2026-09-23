@@ -26,3 +26,6 @@ expo-env.d.ts
 npm-debug.*
 *.log
 .DS_Store
+
+# Supabase CLI 로컬 캐시 (프로젝트 링크 정보 등 — 커밋 대상 아님)
+supabase/.temp/
