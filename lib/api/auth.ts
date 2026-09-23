@@ -244,3 +244,31 @@ export async function signOut(scope: "global" | "local" = "global"): Promise<voi
   const { error } = await supabase.auth.signOut({ scope });
   if (error) throw new Error(error.message);
 }
+
+/**
+ * 계정 삭제(회원 탈퇴)
+ * - auth.users 삭제는 SERVICE_ROLE 권한이 필요해 클라이언트에서 직접 할 수
+ *   없으므로 Edge Function(delete-account)에 위임한다.
+ * - 개인 데이터(관심 지역/푸시 토큰/접속 기록 등)는 서버에서 함께 삭제되고,
+ *   이미 등록한 가격 정보는 다른 이용자를 위해 작성자 연결만 끊긴 채 남는다
+ *   (schema.sql의 gym_prices.user_id on delete set null 참고).
+ * - 서버에서 계정이 이미 삭제됐으므로, 다시 로그아웃을 요청할 필요 없이
+ *   기기에 남은 세션 정보만 지운다.
+ */
+export async function deleteAccount(): Promise<void> {
+  if (USE_MOCK) return;
+
+  const res = await supabase.functions.invoke("delete-account");
+  if (res.error) {
+    let message = "계정 삭제에 실패했습니다.";
+    try {
+      const body = await res.response?.json();
+      if (body && typeof body.error === "string") message = body.error;
+    } catch {
+      // 응답 본문을 읽지 못하면 기본 메시지를 그대로 쓴다.
+    }
+    throw new Error(message);
+  }
+
+  await supabase.auth.signOut({ scope: "local" });
+}

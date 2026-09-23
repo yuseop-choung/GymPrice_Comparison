@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -15,7 +16,7 @@ import { useMyPrices } from "../../features/price/hooks";
 import { MyPriceCard } from "../../features/user/components/MyPriceCard";
 import { ProfileGuestView } from "../../features/user/components/ProfileGuestView";
 import { ProfileHeader } from "../../features/user/components/ProfileHeader";
-import { useInterestRegions } from "../../features/user/hooks";
+import { useAccountDeletion, useInterestRegions } from "../../features/user/hooks";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { useAuthStore } from "../../store/authStore";
 import { useThemeStore } from "../../store/themeStore";
@@ -37,6 +38,7 @@ export default function ProfileScreen() {
   const themeMode = useThemeStore((state) => state.mode);
   const setThemeMode = useThemeStore((state) => state.setMode);
   const { sendTest } = useNotifications();
+  const { deleteAccount } = useAccountDeletion();
 
   // 화면에 돌아올 때마다 최신화 (등록/수정/삭제 반영)
   useFocusEffect(
@@ -44,6 +46,26 @@ export default function ProfileScreen() {
       refetch();
     }, [refetch])
   );
+
+  function handleDeleteAccountPress() {
+    Alert.alert(
+      "정말 탈퇴하시겠어요?",
+      "계정을 삭제하면 내 정보, 관심 지역, 알림 설정이 모두 삭제되며 되돌릴 수 없습니다. 등록하신 가격 정보는 다른 이용자를 위해 익명으로 남습니다.",
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "탈퇴하기",
+          style: "destructive",
+          onPress: async () => {
+            const ok = await deleteAccount();
+            if (!ok) {
+              Alert.alert("탈퇴 실패", "잠시 후 다시 시도해주세요.");
+            }
+          },
+        },
+      ]
+    );
+  }
 
   // 비로그인 상태(둘러보기 중)면 내 정보를 보여줄 게 없으므로 로그인을 유도한다.
   if (!user) {
@@ -84,6 +106,7 @@ export default function ProfileScreen() {
             onInterestRegionPress={() => router.push("/interest-region")}
             onSendTest={sendTest}
             onSignOut={signOut}
+            onDeleteAccountPress={handleDeleteAccountPress}
             priceCount={prices.length}
           />
         }

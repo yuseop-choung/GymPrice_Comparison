@@ -171,6 +171,25 @@ end $$;
 
 create index if not exists gym_prices_gym_id_idx on public.gym_prices (gym_id);
 
+-- ⚠️ 계정 삭제(회원 탈퇴) 시 gym_prices까지 CASCADE로 함께 지워지면, 다른
+-- 이용자를 위해 쌓인 가격 비교 데이터(이미 승인된 가격 등)가 통째로 사라진다.
+-- 개인정보(계정 자체)는 완전히 지우되, 커뮤니티에 기여한 가격 데이터는 남기기
+-- 위해 user_id를 nullable로 바꾸고 삭제 시 CASCADE 대신 SET NULL(작성자 연결만
+-- 끊기)로 변경한다. (이미 만들어진 테이블에도 적용, 재실행해도 안전)
+alter table public.gym_prices alter column user_id drop not null;
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'gym_prices_user_id_fkey' and confdeltype = 'c' -- 'c' = cascade(기존 값)
+  ) then
+    alter table public.gym_prices drop constraint gym_prices_user_id_fkey;
+    alter table public.gym_prices
+      add constraint gym_prices_user_id_fkey
+        foreign key (user_id) references public.users(uid) on delete set null;
+  end if;
+end $$;
+
 create table if not exists public.gym_details (
   id              uuid        primary key default gen_random_uuid(),
   gym_id          uuid        not null unique references public.gyms(id) on delete cascade,

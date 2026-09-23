@@ -58,7 +58,9 @@ export type PriceStatus = "pending" | "approved" | "rejected";
 export interface GymPrice {
   id: string;
   gym_id: string;
-  user_id: string;
+  // 작성자가 계정을 삭제하면 null이 된다 — 커뮤니티에 기여한 가격 데이터는
+  // 남기되(다른 이용자에게 계속 보여야 하므로) 작성자와의 연결만 끊는다.
+  user_id: string | null;
   label: string; // 예: "1개월", "3개월", "PT 10회"
   price: number;
   memo: string | null;

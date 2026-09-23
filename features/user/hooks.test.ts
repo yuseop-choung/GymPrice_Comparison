@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import {
+  deleteAccount,
   getCurrentUser,
   requestPasswordReset,
   restorePasswordResetSession,
@@ -17,6 +18,7 @@ import {
 import { useAuthStore } from "../../store/authStore";
 import type { InterestRegion, User } from "../../types";
 import {
+  useAccountDeletion,
   useAuth,
   useForgotPassword,
   useInterestRegions,
@@ -34,6 +36,7 @@ jest.mock("../../lib/api/auth", () => ({
   restorePasswordResetSession: jest.fn(),
   updatePassword: jest.fn(),
   getCurrentUser: jest.fn(),
+  deleteAccount: jest.fn(),
 }));
 
 jest.mock("../../lib/api/interestRegions", () => ({
@@ -53,6 +56,7 @@ const requestPasswordResetMock = requestPasswordReset as jest.Mock;
 const restorePasswordResetSessionMock = restorePasswordResetSession as jest.Mock;
 const updatePasswordMock = updatePassword as jest.Mock;
 const getCurrentUserMock = getCurrentUser as jest.Mock;
+const deleteAccountMock = deleteAccount as jest.Mock;
 
 const USER: User = {
   uid: "user-1",
@@ -181,6 +185,42 @@ describe("useAuth", () => {
 
     expect(signInWithEmailMock).not.toHaveBeenCalled();
     expect(result.current.error).toBe("이메일과 비밀번호를 입력해주세요.");
+  });
+});
+
+describe("useAccountDeletion", () => {
+  beforeEach(() => {
+    deleteAccountMock.mockReset();
+    useAuthStore.setState({ user: USER });
+  });
+
+  it("성공하면 authStore의 로그인 상태를 지우고 true를 반환한다", async () => {
+    deleteAccountMock.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useAccountDeletion());
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.deleteAccount();
+    });
+
+    expect(ok).toBe(true);
+    expect(deleteAccountMock).toHaveBeenCalled();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  it("실패하면 로그인 상태를 그대로 두고 false와 에러 메시지를 반환한다", async () => {
+    deleteAccountMock.mockRejectedValue(new Error("네트워크 오류"));
+    const { result } = await renderHook(() => useAccountDeletion());
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.deleteAccount();
+    });
+
+    expect(ok).toBe(false);
+    expect(useAuthStore.getState().user).toEqual(USER);
+    expect(result.current.error).toBe("네트워크 오류");
   });
 });
 

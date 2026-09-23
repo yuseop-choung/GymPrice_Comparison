@@ -20,12 +20,19 @@
 
   각 알림에는 `data: { gym_id }`가 담겨 있어, 앱에서 알림을 탭하면
   (`useNotificationNavigation`) 해당 헬스장 상세 화면으로 바로 이동한다.
+- **delete-account** — 로그인한 **본인** 계정을 완전히 삭제한다(회원 탈퇴).
+  `POST` (바디 없음, `Authorization: Bearer <본인 계정 access token>`만 필요)
+  `auth.admin.deleteUser()`를 호출하며, 요청 바디로 uid를 받지 않고 토큰에서
+  확인된 본인 계정만 지운다. 개인 데이터(관심 지역/푸시 토큰/접속 기록)는
+  cascade로 함께 삭제되고, 이미 등록한 `gym_prices`는 다른 이용자를 위해
+  남되 작성자 연결만 끊긴다(`user_id` → `null`, schema.sql 참고).
 
 ## 배포
 
 ```bash
 supabase functions deploy send-push
 supabase functions deploy on-new-price
+supabase functions deploy delete-account
 ```
 
 `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` 는 Edge
